@@ -1,6 +1,7 @@
 (ns clojure.test.check.clojure-test.assertions
   #?(:cljs (:require-macros [clojure.test.check.clojure-test.assertions.cljs]))
   (:require #?(:clj [clojure.test :as t]
+               :clje [clojure.test :as t]
                :cljs [cljs.test :as t])))
 
 #?(:clj
@@ -32,6 +33,8 @@
               :actual m}
              #?(:clj (file-and-line*
                        (test-context-stacktrace (.getStackTrace (Thread/currentThread))))
+                ;; TODO: get the actual information
+                :clje {:file nil :line nil}
                 :cljs (t/file-and-line (js/Error.) 4))))))
 
 (defn check?
@@ -39,8 +42,11 @@
   `(let [m# ~(nth form 1)]
      (check-results m#)))
 
-
 #?(:clj
+   (defmethod t/assert-expr 'clojure.test.check.clojure-test/check?
+     [_ form]
+     (check? _ form))
+   :clje
    (defmethod t/assert-expr 'clojure.test.check.clojure-test/check?
      [_ form]
      (check? _ form))

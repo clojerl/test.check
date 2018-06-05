@@ -1,0 +1,12 @@
+{ application, test_check
+, [ {vsn, git}
+  , {description, "A QuickCheck inspired property-based testing library."}
+  , {modules, []}
+  , { applications
+    , [ stdlib
+      , kernel
+      , clojerl
+      ]
+    }
+  ]
+}.
