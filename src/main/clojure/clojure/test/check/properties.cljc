@@ -36,7 +36,7 @@
                        (throw ret)
                        ret))
                    #?(:clj (catch java.lang.ThreadDeath t (throw t)))
-                   (catch #?(:clj Throwable :cljs :default) ex
+                   (catch #?(:clj Throwable :clje _ :cljs :default) ex
                      (->ErrorResult ex)))]
       {:result result
        :function function

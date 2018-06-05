@@ -10,18 +10,22 @@
 (ns clojure.test.check.rose-tree
   "A lazy tree data structure used for shrinking."
   (:refer-clojure :exclude [filter remove seq])
-  (:require [#?(:clj clojure.core :cljs cljs.core) :as core]))
+  (:require [#?(:clj clojure.core
+                :clje clojure.core
+                :cljs cljs.core) :as core]))
 
 (deftype RoseTree [root children]
   #?(:clj  clojure.lang.Indexed
+     :clje clojerl.IIndexed
      :cljs IIndexed)
-  (#?(:clj nth :cljs -nth) [this i]
+  (#?(:clj nth :clje nth :cljs -nth) [this i]
     (cond (= i 0) root
           (= i 1) children
           :else (throw #?(:clj  (IndexOutOfBoundsException.)
+                          :clje (clojerl.BadArgumentError. "Index out of bounds")
                           :cljs (js/Error. "Index out of bounds in rose tree")))))
 
-  (#?(:clj nth :cljs -nth) [this i not-found]
+  (#?(:clj nth :clje nth :cljs -nth) [this i not-found]
     (cond (= i 0) root
           (= i 1) children
           :else not-found)))
@@ -122,7 +126,7 @@
   "Returns an equivalent lazy seq that is not chunked."
   [a-lazy-seq]
   (take
-   #?(:clj Double/POSITIVE_INFINITY :cljs js/Infinity)
+   #?(:clj Double/POSITIVE_INFINITY :clje :infinity :cljs js/Infinity)
    a-lazy-seq))
 
 (defn shrink

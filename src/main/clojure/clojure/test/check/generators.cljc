@@ -8,11 +8,11 @@
 ;   You must not remove this notice, or any other, from this software.
 
 (ns clojure.test.check.generators
-  (:refer-clojure :exclude [int vector list hash-map map keyword
+  (:refer-clojure :exclude [int vector list hash-map map keyword tuple
                             char boolean byte bytes sequence
                             shuffle not-empty symbol namespace
                             set sorted-set uuid double let])
-  (:require [#?(:clj clojure.core :cljs cljs.core) :as core
+  (:require [#?(:clj clojure.core :clje clojure.core :cljs cljs.core) :as core
              #?@(:cljs [:include-macros true])]
             [clojure.string :as string]
             [clojure.test.check.random :as random]
@@ -238,7 +238,11 @@
          (+ lower (long (Math/floor (* factor width))))
          ;; Clamp down to upper because double math.
          (min upper (long (Math/floor (+ lower (* factor width)))))))
-
+     ;; TODO: check if this is actually the way to do this since the BEAM has
+     ;; arbitrary precision integers.
+     :clje
+     (clj_utils/floor (+ lower (- (* factor (+ 1.0 upper))
+                                  (* factor lower))))
      :cljs
      (long (Math/floor (+ lower (- (* factor (+ 1.0 upper))
                                    (* factor lower)))))))
@@ -320,7 +324,12 @@
 
          (gen/sample (gen/choose 200 800))
          => (331 241 593 339 643 718 688 473 247 694)"
+     :clje
+     "Create a generator that returns integer numbers in the range
+     `lower` to `upper`, inclusive.
 
+         (gen/sample (gen/choose 200 800))
+         => (331 241 593 339 643 718 688 473 247 694)"
      :cljs
      "Creates a generator that generates integer numbers uniformly in
      the range `lower` to `upper`, inclusive.
@@ -332,7 +341,8 @@
   (core/let #?(:clj
                [lower (long lower)
                 upper (long upper)]
-
+               :clje ;; does nothing, arbitrary precision in BEAM
+               []
                :cljs ;; does nothing, no long in cljs
                [])
     (make-gen
@@ -429,12 +439,22 @@
           (rose/filter pred value)
           (recur (dec tries-left) r2 (inc size)))))))
 
+#?(:clje
+   (defn ex-fn
+     [{:keys [max-tries] :as arg}]
+     (ex-info (str "Couldn't satisfy such-that predicate after "
+                   max-tries " tries.")
+              arg)))
+
 (def ^:private
   default-such-that-opts
-  {:ex-fn (fn [{:keys [max-tries] :as arg}]
-            (ex-info (str "Couldn't satisfy such-that predicate after "
-                          max-tries " tries.")
-                     arg))
+  {:ex-fn
+   #?(:clje ex-fn
+      :default
+      (fn [{:keys [max-tries] :as arg}]
+        (ex-info (str "Couldn't satisfy such-that predicate after "
+                      max-tries " tries.")
+                 arg)))
    :max-tries 10})
 
 (defn such-that
@@ -703,8 +723,8 @@
   "Returns a rose tree."
   [empty-coll key-fn shuffle-fn gen rng size num-elements min-elements max-tries ex-fn]
   {:pre [gen (:gen gen)]}
-  (loop [rose-trees (transient [])
-         s (transient #{})
+  (loop [rose-trees #?(:clje [] :default (persistent! []))
+         s #?(:clje #{} :default (persistent! #{}))
          rng rng
          size size
          tries 0]
@@ -716,7 +736,8 @@
 
           (or (= max-tries tries)
               (= (count rose-trees) num-elements))
-          (->> (persistent! rose-trees)
+          (->> #?(:clje rose-trees
+                  :default (persistent! rose-trees))
                ;; we shuffle the rose trees so that we aren't biased
                ;; toward generating "smaller" elements earlier in the
                ;; collection (only applies to ordered collections)
@@ -733,10 +754,10 @@
                      rose (call-gen gen rng1 size)
                      root (rose/root rose)
                      k (key-fn root)]
-            (if (transient-set-contains? s k)
+            (if (#?(:clje contains? :default transient-set-contains?) s k)
               (recur rose-trees s rng2 (inc size) (inc tries))
-              (recur (conj! rose-trees rose)
-                     (conj! s k)
+              (recur (#?(:clje conj :default conj!) rose-trees rose)
+                     (#?(:clje conj :default conj!) s k)
                      rng2
                      size
                      0))))))
@@ -995,18 +1016,26 @@
               (rose/pure (random/rand-long rnd)))))
 
 (def ^:private MAX_INTEGER
-  #?(:clj Long/MAX_VALUE :cljs (dec (apply * (repeat 53 2)))))
+  #?(:clj Long/MAX_VALUE
+     :clje (dec (apply * (repeat 63 2)))
+     :cljs (dec (apply * (repeat 53 2)))))
 (def ^:private MIN_INTEGER
-  #?(:clj Long/MIN_VALUE :cljs (- MAX_INTEGER)))
+  #?(:clj Long/MIN_VALUE
+     :clje (- MAX_INTEGER)
+     :cljs (- MAX_INTEGER)))
 
 (defn ^:private abs
   [x]
-  #?(:clj (Math/abs (long x)) :cljs (Math/abs x)))
+  #?(:clj (Math/abs (long x))
+     :clje (erlang/abs x)
+     :cljs (Math/abs x)))
 
 (defn ^:private long->large-integer
   [bit-count x min max]
   (loop [res (-> x
-                 (#?(:clj bit-shift-right :cljs .shiftRight)
+                 (#?(:clj bit-shift-right
+                     :cljs .shiftRight
+                     :clje bit-shift-right)
                   (- 64 bit-count))
                  #?(:cljs .toNumber)
                  ;; so we don't get into an infinite loop bit-shifting
@@ -1018,6 +1047,7 @@
         (if (<= min res' max)
           res'
           (recur #?(:clj (bit-shift-right res 1)
+                    :clje (bit-shift-right res 1)
                     ;; emulating bit-shift-right
                     :cljs (-> res
                               (cond-> (odd? res)
@@ -1029,7 +1059,7 @@
   [min max]
   (sized (fn [size]
            (core/let [size (core/max size 1) ;; no need to worry about size=0
-                      max-bit-count (core/min size #?(:clj 64 :cljs 54))]
+                      max-bit-count (core/min size #?(:clj 64 :cljs 54 :clje 64))]
              (gen-fmap (fn [rose]
                          (core/let [[bit-count x] (rose/root rose)]
                            (int-rose-tree (long->large-integer bit-count x min max))))
@@ -1089,11 +1119,11 @@
 ;; Some of the lower level stuff could probably be less messy and
 ;; faster, especially for CLJS.
 
-(def ^:private POS_INFINITY #?(:clj Double/POSITIVE_INFINITY, :cljs (.-POSITIVE_INFINITY js/Number)))
-(def ^:private NEG_INFINITY #?(:clj Double/NEGATIVE_INFINITY, :cljs (.-NEGATIVE_INFINITY js/Number)))
-(def ^:private MAX_POS_VALUE #?(:clj Double/MAX_VALUE, :cljs (.-MAX_VALUE js/Number)))
+(def ^:private POS_INFINITY #?(:clj Double/POSITIVE_INFINITY, :clje nil, :cljs (.-POSITIVE_INFINITY js/Number)))
+(def ^:private NEG_INFINITY #?(:clj Double/NEGATIVE_INFINITY, :clje nil, :cljs (.-NEGATIVE_INFINITY js/Number)))
+(def ^:private MAX_POS_VALUE #?(:clj Double/MAX_VALUE, :clje 1.797e308, :cljs (.-MAX_VALUE js/Number)))
 (def ^:private MIN_NEG_VALUE (- MAX_POS_VALUE))
-(def ^:private NAN #?(:clj Double/NaN, :cljs (.-NaN js/Number)))
+(def ^:private NAN #?(:clj Double/NaN :clje nil :cljs (.-NaN js/Number)))
 
 (defn ^:private uniform-integer
   "Generates an integer uniformly in the range 0..(2^bit-count-1)."
@@ -1101,14 +1131,15 @@
   {:assert [(<= 0 bit-count 52)]}
   (if (<= bit-count 32)
     ;; the case here is just for cljs
-    (choose 0 (case (long bit-count)
+    (choose 0 (case #?(:clje bit-count :default (long bit-count))
                 32 0xffffffff
                 31 0x7fffffff
                 (-> 1 (bit-shift-left bit-count) dec)))
     (fmap (fn [[upper lower]]
             #? (:clj
                 (-> upper (bit-shift-left 32) (+ lower))
-
+                :clje
+                (-> upper (bit-shift-left 32) (+ lower))
                 :cljs
                 (-> upper (* 0x100000000) (+ lower))))
           (tuple (uniform-integer (- bit-count 32))
@@ -1117,6 +1148,7 @@
 (defn ^:private scalb
   [x exp]
   #?(:clj (Math/scalb ^double x ^int exp)
+     :clje (* x (math/pow 2 exp))
      :cljs (* x (.pow js/Math 2 exp))))
 
 (defn ^:private fifty-two-bit-reverse
@@ -1124,7 +1156,15 @@
   [n]
   #? (:clj
       (-> n (Long/reverse) (unsigned-bit-shift-right 12))
-
+      :clje
+      (loop [out 0
+             n n
+             out-shifter (math/pow 2 63)]
+        (if (< n 1)
+          (* out out-shifter)
+          (recur (-> out (* 2) (+ (bit-and n 1)))
+                 (/ n 2)
+                 (/ out-shifter 2))))
       :cljs
       (loop [out 0
              n n
@@ -1144,11 +1184,24 @@
                            (fn [rose]
                              (uniform-integer (rose/root rose))))))))
 
+#?(:clje (def ^:private LOG2E 1.4426950408889634))
+
 (defn ^:private get-exponent
   [x]
   #? (:clj
       (Math/getExponent ^Double x)
+      :clje
+      (if (zero? x)
+        -1023
+        (core/let [x (erlang/abs x)
 
+                   res
+                   (clj_utils/floor (* (math/log x) LOG2E))
+
+                   t (scalb x (- res))]
+          (cond (< t 1) (dec res)
+                (<= 2 t) (inc res)
+                :else res)))
       :cljs
       (if (zero? x)
         -1023
@@ -1231,7 +1284,8 @@
              gen
              (fmap (fn [[[exp sign] significand]]
                      (core/let [;; 1.0 <= base < 2.0
-                                base (inc (/ significand (Math/pow 2 52)))
+                                base (inc (/ significand
+                                             (#?(:clje math/pow :default Math/pow) 2 52)))
                                 x (-> base (scalb exp) (* sign))]
                        (if (or (nil? pred) (pred x))
                          x
@@ -1262,6 +1316,7 @@
   min precludes -Infinity, and supplying a max precludes +Infinity."
   {:added "0.9.0"}
   [{:keys [infinite? NaN? min max]
+    ;; TODO [clje]: maybe it would be a good idea to make the defaults false here
     :or {infinite? true, NaN? true}}]
   (core/let [frequency-arg (cond-> [[95 (double-finite min max)]]
 
@@ -1441,6 +1496,7 @@
 (defn- digit?
   [d]
   #?(:clj  (Character/isDigit ^Character d)
+     :clje (re-matches #"[0-9]" d)
      :cljs (gstring/isNumeric d)))
 
 (defn- +-or---digit?
@@ -1450,8 +1506,8 @@
   like numbers."
   [c d]
   (core/boolean (and d
-                     (or (#?(:clj = :cljs identical?) \+ c)
-                         (#?(:clj = :cljs identical?) \- c))
+                     (or (#?(:clj = :clje identical? :cljs identical?) \+ c)
+                         (#?(:clj = :clje identical? :cljs identical?) \- c))
                      (digit? d))))
 
 (def ^:private symbol-name-or-namespace
@@ -1469,7 +1525,8 @@
   make it reasonable."
   [g]
   ;; function chosen by ad-hoc experimentation
-  (scale #(long (Math/pow % 0.60)) g))
+  #?(:clje (scale #(math/pow % 0.60) g)
+     :default (scale #(long (Math/pow % 0.60)) g)))
 
 (def keyword
   "Generates keywords without namespaces."
@@ -1535,7 +1592,11 @@
            (rose/make-rose
             (java.util.UUID. x1 x2)
             []))))
-
+      ;; TODO [clje]: this might be an over-simplification
+      :clje
+      (make-gen
+       (fn [rng _size]
+         (rose/make-rose (erlang.util.UUID/random ) [])))
       :cljs
       ;; this could definitely be optimized so that it doesn't require
       ;; generating 31 numbers
@@ -1590,11 +1651,13 @@
   (one-of [(vector inner-type)
            (list inner-type)
            (set #?(:clj inner-type
+                   :clje inner-type
                    :cljs (such-that hashable? inner-type)))
            ;; scaling this by half since it naturally generates twice
            ;; as many elements
            (scale #(quot % 2)
                   (map #?(:clj inner-type
+                          :clje inner-type
                           :cljs (such-that hashable? inner-type))
                        inner-type))]))
 
@@ -1605,22 +1668,26 @@
   ;; chosen so that recursive-gen (with the assumptions mentioned in
   ;; the comment below) will generate structures with leaf-node-counts
   ;; not greater than the `size` ~99% of the time.
-  (long (Math/pow size 1.1)))
+  #?(:clje (math/pow size 1.1)
+     :default (long (Math/pow size 1.1))))
 
-(core/let [log2 (Math/log 2)]
+#?(:clje (def log2 (math/log 2)))
+
+(core/let #?(:clje []
+             :default [log2 (Math/log 2)])
   (defn ^:private random-pseudofactoring
     "Returns (not generates) a random collection of integers `xs`
   greater than 1 such that (<= (apply * xs) n)."
     [n rng]
     (if (<= n 2)
       [n]
-      (core/let [log (Math/log n)
+      (core/let [log #?(:clje (math/log n) :default (Math/log n))
                  [r1 r2] (random/split rng)
                  n1 (-> (random/rand-double r1)
                         (* (- log log2))
                         (+ log2)
-                        (Math/exp)
-                        (long))
+                        #?(:clje (math/exp) :default (Math/exp))
+                        #?(:clj (long) :cljs (long)))
                  n2 (quot n n1)]
         (if (and (< 1 n1) (< 1 n2))
           (cons n1 (random-pseudofactoring n2 r2))

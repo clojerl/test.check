@@ -9,6 +9,7 @@
 
 (ns clojure.test.check.clojure-test
   (:require #?(:clj  [clojure.test :as ct]
+               :clje [clojure.test :as ct]
                :cljs [cljs.test :as ct :include-macros true])
             [clojure.test.check :as tc]
             [clojure.test.check.clojure-test.assertions]
@@ -30,6 +31,7 @@
   (case type
     :complete
     (let [testing-vars #?(:clj ct/*testing-vars*
+                          :clje ct/*testing-vars*
                           :cljs (:testing-vars ct/*current-env*))
           params       (merge (select-keys args [:result :num-tests :seed
                                                  :time-elapsed-ms])
@@ -133,6 +135,7 @@
 
 (defn with-test-out* [f]
   #?(:clj  (ct/with-test-out (f))
+     :clje (ct/with-test-out (f))
      :cljs (f)))
 
 (defn trial-report-periodic
@@ -165,39 +168,44 @@
   report shrunk results. Defaults to true."
   true)
 
-(when #?(:clj true :cljs (not (and *ns* (re-matches #".*\$macros" (name (ns-name *ns*))))))
+(when #?(:clj true :clje true :cljs (not (and *ns* (re-matches #".*\$macros" (name (ns-name *ns*))))))
   ;; This check accomodates a number of tools that rebind ct/report
   ;; to be a regular function instead of a multimethod, and may do
   ;; so before this code is loaded (see TCHECK-125)
-  (if-not (instance? #?(:clj clojure.lang.MultiFn :cljs MultiFn) ct/report)
-    (binding [*out* #?(:clj *err* :cljs *out*)]
+  (if-not #?(:clje true :default (instance? #?(:clj clojure.lang.MultiFn :cljs MultiFn) ct/report))
+    (binding [*out* #?(:clj *err* :clje *err* :cljs *out*)]
       (println "clojure.test/report is not a multimethod, some reporting functions have been disabled."))
-    (let [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
-                                                         :cljs [::ct/default :begin-test-var]))]
+    (let #?(:clje []
+            :default [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
+                                                                     :cljs [::ct/default :begin-test-var]))])
+
+      #?(:clje (def begin-test-var-method (get-method ct/report :begin-test-var)))
+
       (defmethod ct/report #?(:clj  :begin-test-var
+                              :clje :begin-test-var
                               :cljs [::ct/default :begin-test-var]) [m]
         (reset! last-trial-report (get-current-time-millis))
         (when begin-test-var-method (begin-test-var-method m)))
 
-      (defmethod ct/report #?(:clj ::trial :cljs [::ct/default ::trial]) [m]
+      (defmethod ct/report #?(:clj ::trial :clje ::trial :cljs [::ct/default ::trial]) [m]
         (when-let [trial-report-fn (and *report-trials*
                                         (if (true? *report-trials*)
                                           trial-report-dots
                                           *report-trials*))]
           (trial-report-fn m)))
 
-      (defmethod ct/report #?(:clj ::shrinking :cljs [::ct/default ::shrinking]) [m]
+      (defmethod ct/report #?(:clj ::shrinking :clje ::shrinking :cljs [::ct/default ::shrinking]) [m]
         (when *report-shrinking*
           (with-test-out*
             (fn []
               (println "Shrinking" (get-property-name m)
                 "starting with parameters" (pr-str (::params m)))))))
 
-      (defmethod ct/report #?(:clj ::complete :cljs [::ct/default ::complete]) [m]
+      (defmethod ct/report #?(:clj ::complete :clje ::complete :cljs [::ct/default ::complete]) [m]
         (when *report-completion*
           (prn (::complete m))))
 
-      (defmethod ct/report #?(:clj ::shrunk :cljs [::ct/default ::shrunk]) [m]
+      (defmethod ct/report #?(:clj ::shrunk :clje ::shrunk :cljs [::ct/default ::shrunk]) [m]
         (when *report-completion*
           (with-test-out*
             (fn [] (prn m))))))))

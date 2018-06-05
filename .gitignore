@@ -16,3 +16,6 @@ pom.xml.asc
 /.settings/
 .idea/
 *.iml
+/_build/
+/_checkouts/
+rebar.lock
