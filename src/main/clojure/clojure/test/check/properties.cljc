@@ -21,7 +21,10 @@
 
 (defn ^:private exception?
   [x]
-  (instance? #?(:clj Throwable :cljs js/Error) x))
+  #?(:clje
+     (satisfies? clojerl.IError x)
+     :default
+     (instance? #?(:clj Throwable :cljs js/Error) x)))
 
 (defn ^:private apply-gen
   [function]
