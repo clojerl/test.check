@@ -161,8 +161,11 @@
   0x9e3779b97f4a7c15)
 
 (defn make-java-util-splittable-random
-  [seed]
-  (SplittableRandom. golden-gamma seed))
+  ([]
+   (make-java-util-splittable-random (erlang/monotonic_time :milli_seconds)))
+  ([seed]
+   (SplittableRandom. golden-gamma seed)))
+
 
 ;; some global state to make sure that seedless calls to make-random
 ;; return independent results
@@ -170,15 +173,12 @@
   "Returns a random-number generator. Successive calls should return
   independent results."
   []
-  (let [a (atom (make-java-util-splittable-random (erlang/monotonic_time :milli_seconds)))
-
-        uuid (erlang.util.UUID/random)]
-    (erlang/put uuid (first (split (swap! a #(second (split %))))))
-    (fn []
-      (let [rng (erlang/get uuid)
-            [rng1 rng2] (split rng)]
-        (erlang/put uuid rng2)
-        rng1))))
+  (when-not (erlang/get ::rng)
+    (erlang/put ::rng (make-java-util-splittable-random)))
+  (let [rng (erlang/get ::rng)
+        [rng1 rng2] (split rng)]
+    (erlang/put ::rng rng2)
+    rng1))
 
 (defn make-random
   "Given an optional Long seed, returns an object that satisfies the

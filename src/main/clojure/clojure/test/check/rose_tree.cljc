@@ -122,12 +122,18 @@
    (map-indexed (fn [index _] (exclude-nth index roses)) roses)
    (permutations (vec roses))))
 
+#?(:clje
+   (defn- take-all [coll]
+     (lazy-seq (when-let [s (core/seq coll)]
+                 (cons (first s) (take-all (rest s)))))))
+
 (defn ^:private unchunk
   "Returns an equivalent lazy seq that is not chunked."
   [a-lazy-seq]
-  (take
-   #?(:clj Double/POSITIVE_INFINITY :clje :infinity :cljs js/Infinity)
-   a-lazy-seq))
+  #?(:clje
+     (take-all a-lazy-seq)
+     :default
+     (take #?(:clj Double/POSITIVE_INFINITY :cljs js/Infinity) a-lazy-seq)))
 
 (defn shrink
   {:no-doc true}

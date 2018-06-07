@@ -30,7 +30,7 @@
 (defn generator?
   "Test if `x` is a generator. Generators should be treated as opaque values."
   [x]
-  (instance? Generator x))
+  (or (instance? Generator x) (instance? clojerl.Var x)))
 
 (defn- make-gen
   [generator-fn]
@@ -91,6 +91,12 @@
 ;; Exported generator functions
 ;; ---------------------------------------------------------------------------
 
+#?(:clje
+   (defn resolve-gen [gen-or-var]
+     (if (instance? Generator gen-or-var)
+       gen-or-var
+       (gen-or-var))))
+
 (defn fmap
   "Returns a generator like `gen` but with values transformed by `f`.
   E.g.:
@@ -101,7 +107,7 @@
   Also see gen/let for a macro with similar functionality."
   [f gen]
   (assert (generator? gen) "Second arg to fmap must be a generator")
-  (gen-fmap #(rose/fmap f %) gen))
+  (gen-fmap #(rose/fmap f %) #?(:clje (resolve-gen gen) :default gen)))
 
 (defn return
   "Creates a generator that always returns `value`,
@@ -139,7 +145,7 @@
   Also see gen/let for a macro with similar functionality."
   [generator f]
   (assert (generator? generator) "First arg to bind must be a generator")
-  (gen-bind generator (bind-helper f)))
+  (gen-bind #?(:clje (resolve-gen generator) :default generator) (bind-helper f)))
 
 ;; Helpers
 ;; ---------------------------------------------------------------------------
@@ -177,7 +183,8 @@
    (sample generator 10))
   ([generator num-samples]
    (assert (generator? generator) "First arg to sample must be a generator")
-   (take num-samples (sample-seq generator))))
+   (take num-samples (sample-seq #?(:clje (resolve-gen generator)
+                                    :default generator)))))
 
 (defn generate
   "Returns a single sample value from the generator.
@@ -298,7 +305,7 @@
           #{-2.1582818131881376E83 -5.8460065493236117E48 9.729260993803226E166})"
   [n generator]
   (assert (generator? generator) "Second arg to resize must be a generator")
-  (core/let [{:keys [gen]} generator]
+  (core/let [{:keys [gen]} #?(:clje (resolve-gen generator) :default generator)]
     (make-gen
      (fn [rnd _size]
        (gen rnd n)))))
@@ -364,8 +371,10 @@
           "Arg to one-of must be a collection of generators")
   (assert (seq generators)
           "one-of cannot be called with an empty collection")
-  (bind (choose 0 (dec (count generators)))
-        #(nth generators %)))
+  (core/let #?(:clje [generators (mapv resolve-gen generators)]
+               :default [])
+    (bind (choose 0 (dec (count generators)))
+          #(nth generators %))))
 
 (defn- pick
   "Returns an index into the `likelihoods` sequence."
@@ -392,7 +401,8 @@
                   pairs)
           "Arg to frequency must be a list of [num generator] pairs")
   (core/let [pairs (filter (comp pos? first) pairs)
-             total (apply + (core/map first pairs))]
+             total (apply + (core/map first pairs))
+             #?@(:clje [pairs (core/map (fn [[x g]] [x (resolve-gen g)]) pairs)])]
     (assert (seq pairs)
             "frequency must be called with at least one non-zero weight")
     ;; low-level impl for shrinking control
@@ -495,7 +505,11 @@
      (assert (generator? gen) "Second arg to such-that must be a generator")
      (make-gen
       (fn [rand-seed size]
-        (such-that-helper pred gen opts rand-seed size))))))
+        (such-that-helper pred
+                          #?(:clje (resolve-gen gen) :default gen)
+                          opts
+                          rand-seed
+                          size))))))
 
 (defn not-empty
   "Modifies a generator so that it doesn't generate empty collections.
@@ -516,7 +530,7 @@
           [false true true true false true true true false])"
   [gen]
   (assert (generator? gen) "Arg to not-empty must be a generator")
-  (such-that core/not-empty gen))
+  (such-that core/not-empty #?(:clje (resolve-gen gen) :default gen)))
 
 (defn no-shrink
   "Creates a new generator that is just like `gen`, except does not shrink
@@ -526,18 +540,26 @@
   (assert (generator? gen) "Arg to no-shrink must be a generator")
   (gen-fmap (fn [rose]
               (rose/make-rose (rose/root rose) []))
-            gen))
+            #?(:clje (resolve-gen gen) :default gen)))
 
 (defn shrink-2
   "Creates a new generator like `gen`, but will consider nodes for shrinking
   even if their parent passes the test (up to one additional level)."
   [gen]
   (assert (generator? gen) "Arg to shrink-2 must be a generator")
-  (gen-fmap rose/collapse gen))
+  (gen-fmap rose/collapse #?(:clje (resolve-gen gen) :default gen)))
+
+#?(:clje
+   (defmacro thunk [& forms]
+     `(clojure.core/fn []
+        ~@forms)))
 
 (def boolean
   "Generates one of `true` or `false`. Shrinks to `false`."
-  (elements [false true]))
+  #?(:clje
+     (thunk (elements [false true]))
+     :default
+     (elements [false true])))
 
 (defn tuple
   "Creates a generator that returns a vector, whose elements are chosen
@@ -555,14 +577,15 @@
           "Args to tuple must be generators")
   (gen-fmap (fn [roses]
               (rose/zip core/vector roses))
-            (gen-tuple generators)))
+            (gen-tuple #?(:clje (core/map resolve-gen generators) :default generators))))
 
 (def nat
   "Generates non-negative integers bounded by the generator's `size`
   parameter. Shrinks to zero."
-  (sized (fn [size] (choose 0 size)))
-  #_
-  (fmap #(Math/abs (long %)) int))
+  #?(:clje
+     (thunk (sized (fn [size] (choose 0 size))))
+     :default
+     (sized (fn [size] (choose 0 size)))))
 
 (def ^{:added "0.10.0"} small-integer
   "Generates a positive or negative integer bounded by the generator's
@@ -592,19 +615,28 @@
   (this generator, despite its name, can generate 0)
 
   Generates nonpositive integers bounded by the generator's `size` parameter."
-  (fmap #(* -1 %) nat))
+  #?(:clje
+     (thunk (fmap #(* -1 %) (nat)))
+     :default
+     (fmap #(* -1 %) nat)))
 
 (def ^{:deprecated "0.10.0"} s-pos-int
   "Deprecated - use (gen/fmap inc gen/nat) instead (see also gen/large-integer).
 
   Generates positive integers bounded by the generator's `size` + 1"
-  (fmap inc nat))
+  #?(:clje
+     (thunk (fmap inc (nat)))
+     :default
+     (fmap inc nat)))
 
 (def ^{:deprecated "0.10.0"} s-neg-int
   "Deprecated - use (gen/fmap (comp dec -) gen/nat) instead (see also gen/large-integer).
 
   Generates negative integers bounded by the generator's `size` + 1"
-  (fmap dec neg-int))
+  #?(:clje
+     (thunk (fmap dec (neg-int)))
+     :default
+     (fmap dec neg-int)))
 
 (defn vector
   "Creates a generator of vectors whose elements are chosen from
@@ -619,10 +651,12 @@
                   (rose/shrink-vector core/vector
                                       roses))
                 (gen-tuple (repeat (rose/root num-elements-rose)
-                                   generator))))))
+                                   #?(:clje (resolve-gen generator)
+                                      :default generator)))))))
   ([generator num-elements]
    (assert (generator? generator) "First arg to vector must be a generator")
-   (apply tuple (repeat num-elements generator)))
+   (apply tuple (repeat num-elements #?(:clje (resolve-gen generator)
+                                        :default generator))))
   ([generator min-elements max-elements]
    (assert (generator? generator) "First arg to vector must be a generator")
    (gen-bind
@@ -635,7 +669,8 @@
                    (rose/shrink-vector core/vector
                                        roses)))
                 (gen-tuple (repeat (rose/root num-elements-rose)
-                                   generator)))))))
+                                   #?(:clje (resolve-gen generator)
+                                      :default generator))))))))
 
 (defn list
   "Like `vector`, but generates lists."
@@ -647,7 +682,8 @@
                           (rose/shrink-vector core/list
                                               roses))
                         (gen-tuple (repeat (rose/root num-elements-rose)
-                                           generator))))))
+                                           #?(:clje (resolve-gen generator)
+                                              :default generator)))))))
 
 (defn- swap
   [coll [i1 i2]]
@@ -705,7 +741,7 @@
     (assert (every? generator? vs)
             "Value args to hash-map must be generators")
     (fmap #(zipmap ks %)
-          (apply tuple vs))))
+          (apply tuple #?(:clje (core/map resolve-gen vs) :default vs)))))
 
 ;; Collections of distinct elements
 ;; (has to be done in a low-level way (instead of with combinators)
@@ -856,7 +892,7 @@
   ([gen] (vector-distinct gen {}))
   ([gen opts]
    (assert (generator? gen) "First arg to vector-distinct must be a generator!")
-   (coll-distinct-by [] identity true true gen opts)))
+   (coll-distinct-by [] identity true true #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn list-distinct
   "Generates a list of elements from the given generator, with the
@@ -881,7 +917,7 @@
   ([gen] (list-distinct gen {}))
   ([gen opts]
    (assert (generator? gen) "First arg to list-distinct must be a generator!")
-   (coll-distinct-by () identity true true gen opts)))
+   (coll-distinct-by () identity true true #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn vector-distinct-by
   "Generates a vector of elements from the given generator, with the
@@ -906,7 +942,7 @@
   ([key-fn gen] (vector-distinct-by key-fn gen {}))
   ([key-fn gen opts]
    (assert (generator? gen) "Second arg to vector-distinct-by must be a generator!")
-   (coll-distinct-by [] key-fn true true gen opts)))
+   (coll-distinct-by [] key-fn true true #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn list-distinct-by
   "Generates a list of elements from the given generator, with the
@@ -931,7 +967,7 @@
   ([key-fn gen] (list-distinct-by key-fn gen {}))
   ([key-fn gen opts]
    (assert (generator? gen) "Second arg to list-distinct-by must be a generator!")
-   (coll-distinct-by () key-fn true true gen opts)))
+   (coll-distinct-by () key-fn true true #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn set
   "Generates a set of elements from the given generator.
@@ -955,7 +991,7 @@
   ([gen] (set gen {}))
   ([gen opts]
    (assert (generator? gen) "First arg to set must be a generator!")
-   (coll-distinct-by #{} identity false false gen opts)))
+   (coll-distinct-by #{} identity false false #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn sorted-set
   "Generates a sorted set of elements from the given generator.
@@ -979,7 +1015,7 @@
   ([gen] (sorted-set gen {}))
   ([gen opts]
    (assert (generator? gen) "First arg to sorted-set must be a generator!")
-   (coll-distinct-by (core/sorted-set) identity false false gen opts)))
+   (coll-distinct-by (core/sorted-set) identity false false #?(:clje (resolve-gen gen) :default gen) opts)))
 
 (defn map
   "Creates a generator that generates maps, with keys chosen from
@@ -1012,8 +1048,12 @@
 
 (def ^:private gen-raw-long
   "Generates a single uniformly random long, does not shrink."
-  (make-gen (fn [rnd _size]
-              (rose/pure (random/rand-long rnd)))))
+  #?(:clje
+     (thunk (make-gen (fn [rnd _size]
+                 (rose/pure (random/rand-long rnd)))))
+     :default
+     (make-gen (fn [rnd _size]
+                 (rose/pure (random/rand-long rnd))))))
 
 (def ^:private MAX_INTEGER
   #?(:clj Long/MAX_VALUE
@@ -1094,7 +1134,10 @@
   (2^53 - 1)).
 
   Use large-integer* for more control."
-  (large-integer* {}))
+  #?(:clje
+     (thunk (large-integer* {}))
+     :default
+     (large-integer* {})))
 
 ;; doubles
 ;; ---------------------------------------------------------------------------
@@ -1163,7 +1206,7 @@
         (if (< n 1)
           (* out out-shifter)
           (recur (-> out (* 2) (+ (bit-and n 1)))
-                 (/ n 2)
+                 (core/int (/ n 2))
                  (/ out-shifter 2))))
       :cljs
       (loop [out 0
@@ -1178,11 +1221,18 @@
 (def ^:private backwards-shrinking-significand
   "Generates a 52-bit non-negative integer that shrinks toward having
   fewer lower-order bits (and shrinks to 0 if possible)."
-  (fmap fifty-two-bit-reverse
-        (sized (fn [size]
-                 (gen-bind (choose 0 (min size 52))
-                           (fn [rose]
-                             (uniform-integer (rose/root rose))))))))
+  #?(:clje
+     (thunk (fmap fifty-two-bit-reverse
+                  (sized (fn [size]
+                           (gen-bind (choose 0 (min size 52))
+                                     (fn [rose]
+                                       (uniform-integer (rose/root rose))))))))
+     :default
+     (fmap fifty-two-bit-reverse
+           (sized (fn [size]
+                    (gen-bind (choose 0 (min size 52))
+                              (fn [rose]
+                                (uniform-integer (rose/root rose)))))))))
 
 #?(:clje (def ^:private LOG2E 1.4426950408889634))
 
@@ -1350,7 +1400,8 @@
 (def ^{:added "0.9.0"} double
   "Generates 64-bit floating point numbers from the entire range,
   including +/- infinity and NaN. Use double* for more control."
-  (double* {}))
+  #?(:clje (thunk (double* {}))
+     :default (double* {})))
 
 ;; bigints
 ;; ---------------------------------------------------------------------------
@@ -1433,18 +1484,30 @@
 
 (def char
   "Generates character from 0-255."
-  (fmap core/char (choose 0 255)))
+  #?(:clje
+     (thunk (fmap core/char (choose 0 255)))
+     :default
+     (fmap core/char (choose 0 255))))
 
 (def char-ascii
   "Generates only ascii characters."
-  (fmap core/char (choose 32 126)))
+  #?(:clje
+     (thunk (fmap core/char (choose 32 126)))
+     :default
+     (fmap core/char (choose 32 126))))
 
 (def char-alphanumeric
   "Generates alphanumeric characters."
-  (fmap core/char
-        (one-of [(choose 48 57)
-                 (choose 65 90)
-                 (choose 97 122)])))
+  #?(:clje
+     (thunk (fmap core/char
+                  (one-of [(choose 48 57)
+                           (choose 65 90)
+                           (choose 97 122)])))
+     :default
+     (fmap core/char
+           (one-of [(choose 48 57)
+                    (choose 65 90)
+                    (choose 97 122)]))))
 
 (def ^{:deprecated "0.6.0"}
   char-alpha-numeric
@@ -1455,36 +1518,62 @@
 
 (def char-alpha
   "Generates alpha characters."
-  (fmap core/char
-        (one-of [(choose 65 90)
-                 (choose 97 122)])))
+  #?(:clje
+     (thunk (fmap core/char
+                  (one-of [(choose 65 90)
+                           (choose 97 122)])))
+     :default
+     (fmap core/char
+           (one-of [(choose 65 90)
+                    (choose 97 122)]))))
 
 (def ^:private char-symbol-special
   "Generates non-alphanumeric characters that can be in a symbol."
-  (elements [\* \+ \! \- \_ \? \.]))
+  #?(:clje
+     (thunk (elements [\* \+ \! \- \_ \? \.]))
+     :default
+     (elements [\* \+ \! \- \_ \? \.])))
 
 (def ^:private char-symbol-noninitial
   "Generates characters that can be the char following first of a keyword or symbol."
-  (frequency [[14 char-alphanumeric]
-              [7 char-symbol-special]
-              [1 (return \:)]]))
+  #?(:clje
+     (thunk (frequency [[14 char-alphanumeric]
+                        [7 char-symbol-special]
+                        [1 (return \:)]]))
+     :default
+     (frequency [[14 char-alphanumeric]
+                 [7 char-symbol-special]
+                 [1 (return \:)]])))
 
 (def ^:private char-symbol-initial
   "Generates characters that can be the first char of a keyword or symbol."
-  (frequency [[2 char-alpha]
-              [1 char-symbol-special]]))
+  #?(:clje
+     (thunk (frequency [[2 char-alpha]
+                        [1 char-symbol-special]]))
+     :default
+     (frequency [[2 char-alpha]
+                 [1 char-symbol-special]])))
 
 (def string
   "Generates strings. May generate unprintable characters."
-  (fmap clojure.string/join (vector char)))
+  #?(:clje
+     (thunk (fmap clojure.string/join (vector char)))
+     :default
+     (fmap clojure.string/join (vector char))))
 
 (def string-ascii
   "Generates ascii strings."
-  (fmap clojure.string/join (vector char-ascii)))
+  #?(:clje
+     (thunk (fmap clojure.string/join (vector char-ascii)))
+     :default
+     (fmap clojure.string/join (vector char-ascii))))
 
 (def string-alphanumeric
   "Generates alphanumeric strings."
-  (fmap clojure.string/join (vector char-alphanumeric)))
+  #?(:clje
+     (thunk (fmap clojure.string/join (vector char-alphanumeric)))
+     :default
+     (fmap clojure.string/join (vector char-alphanumeric))))
 
 (def ^{:deprecated "0.6.0"}
   string-alpha-numeric
@@ -1512,13 +1601,22 @@
 
 (def ^:private symbol-name-or-namespace
   "Generates a namespace string for a symbol/keyword."
-  (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
-       (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
-       (fmap (fn [[c cs]]
-               (core/let [s (clojure.string/join (cons c cs))]
-                 (-> s
-                     (string/replace #":{2,}" ":")
-                     (string/replace #":$" "")))))))
+  #?(:clje
+     (thunk (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
+                 (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
+                 (fmap (fn [[c cs]]
+                         (core/let [s (clojure.string/join (cons c cs))]
+                           (-> s
+                               (string/replace #":{2,}" ":")
+                               (string/replace #":$" "")))))))
+     :default
+     (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
+          (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
+          (fmap (fn [[c cs]]
+                  (core/let [s (clojure.string/join (cons c cs))]
+                    (-> s
+                        (string/replace #":{2,}" ":")
+                        (string/replace #":$" ""))))))))
 
 (defn ^:private resize-symbolish-generator
   "Scales the sizing down on a keyword or symbol generator so as to
@@ -1530,40 +1628,67 @@
 
 (def keyword
   "Generates keywords without namespaces."
-  (->> symbol-name-or-namespace
-       (fmap core/keyword)
-       (resize-symbolish-generator)))
+  #?(:clje
+     (thunk (->> symbol-name-or-namespace
+                 (fmap core/keyword)
+                 (resize-symbolish-generator)))
+     :default
+     (->> symbol-name-or-namespace
+          (fmap core/keyword)
+          (resize-symbolish-generator))))
 
 (def
   ^{:added "0.5.9"}
   keyword-ns
   "Generates keywords with namespaces."
-  (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-       (fmap (fn [[ns name]] (core/keyword ns name)))
-       (resize-symbolish-generator)))
+  #?(:clje
+     (thunk (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+                 (fmap (fn [[ns name]] (core/keyword ns name)))
+                 (resize-symbolish-generator)))
+     :default
+     (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+          (fmap (fn [[ns name]] (core/keyword ns name)))
+          (resize-symbolish-generator))))
 
 (def symbol
   "Generates symbols without namespaces."
-  (frequency [[100
-               (->> symbol-name-or-namespace
-                    (fmap core/symbol)
-                    (resize-symbolish-generator))]
-              [1 (return '/)]]))
+  #?(:clje
+     (thunk (frequency [[100
+                         (->> symbol-name-or-namespace
+                              (fmap core/symbol)
+                              (resize-symbolish-generator))]
+                        [1 (return '/)]]))
+     :default
+     (frequency [[100
+                  (->> symbol-name-or-namespace
+                       (fmap core/symbol)
+                       (resize-symbolish-generator))]
+                 [1 (return '/)]])))
 
 (def
   ^{:added "0.5.9"}
   symbol-ns
   "Generates symbols with namespaces."
-  (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-       (fmap (fn [[ns name]] (core/symbol ns name)))
-       (resize-symbolish-generator)))
+  #?(:clje
+     (thunk (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+                 (fmap (fn [[ns name]] (core/symbol ns name)))
+                 (resize-symbolish-generator)))
+     :default
+     (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+          (fmap (fn [[ns name]] (core/symbol ns name)))
+          (resize-symbolish-generator))))
 
 (def ratio
   "Generates a small ratio (or integer) using gen/small-integer. Shrinks
   toward simpler ratios, which may be larger or smaller."
-  (fmap
-   (fn [[a b]] (/ a b))
-   (tuple small-integer (fmap inc nat))))
+  #?(:clje
+     (thunk (fmap
+             (fn [[a b]] (/ a b))
+             (tuple small-integer (fmap inc nat))))
+     :default
+     (fmap
+      (fn [[a b]] (/ a b))
+      (tuple small-integer (fmap inc nat)))))
 
 #?(:clj
    (def ^{:added "0.10.0"} big-ratio
@@ -1576,65 +1701,78 @@
 
 (def ^{:added "0.9.0"} uuid
   "Generates a random type-4 UUID. Does not shrink."
-  (no-shrink
-   #?(:clj
-      ;; this could be done with combinators, but doing it low-level
-      ;; seems to be 10x faster
-      (make-gen
-       (fn [rng _size]
-         (core/let [[r1 r2] (random/split rng)
-                    x1 (-> (random/rand-long r1)
-                           (bit-and -45057)
-                           (bit-or 0x4000))
-                    x2 (-> (random/rand-long r2)
-                           (bit-or -9223372036854775808)
-                           (bit-and -4611686018427387905))]
-           (rose/make-rose
-            (java.util.UUID. x1 x2)
-            []))))
-      ;; TODO [clje]: this might be an over-simplification
-      :clje
-      (make-gen
-       (fn [rng _size]
-         (rose/make-rose (erlang.util.UUID/random ) [])))
-      :cljs
-      ;; this could definitely be optimized so that it doesn't require
-      ;; generating 31 numbers
-      (fmap (fn [nibbles]
-              (letfn [(hex [idx] (.toString (nibbles idx) 16))]
-                (core/let [rhex (-> (nibbles 15) (bit-and 3) (+ 8) (.toString 16))]
-                  (core/uuid (str (hex 0)  (hex 1)  (hex 2)  (hex 3)
-                                  (hex 4)  (hex 5)  (hex 6)  (hex 7)  "-"
-                                  (hex 8)  (hex 9)  (hex 10) (hex 11) "-"
-                                  "4"      (hex 12) (hex 13) (hex 14) "-"
-                                  rhex     (hex 16) (hex 17) (hex 18) "-"
-                                  (hex 19) (hex 20) (hex 21) (hex 22)
-                                  (hex 23) (hex 24) (hex 25) (hex 26)
-                                  (hex 27) (hex 28) (hex 29) (hex 30))))))
-            (vector (choose 0 15) 31)))))
+  #?(:clje
+     ;; TODO [clje]: this might be an over-simplification
+     (thunk (no-shrink (make-gen
+                        (fn [rng _size]
+                          (rose/make-rose (erlang.util.UUID/random ) [])))))
+     :default
+     (no-shrink
+      #?(:clj
+         ;; this could be done with combinators, but doing it low-level
+         ;; seems to be 10x faster
+         (make-gen
+          (fn [rng _size]
+            (core/let [[r1 r2] (random/split rng)
+                       x1 (-> (random/rand-long r1)
+                              (bit-and -45057)
+                              (bit-or 0x4000))
+                       x2 (-> (random/rand-long r2)
+                              (bit-or -9223372036854775808)
+                              (bit-and -4611686018427387905))]
+              (rose/make-rose
+               (java.util.UUID. x1 x2)
+               []))))
+         :cljs
+         ;; this could definitely be optimized so that it doesn't require
+         ;; generating 31 numbers
+         (fmap (fn [nibbles]
+                 (letfn [(hex [idx] (.toString (nibbles idx) 16))]
+                   (core/let [rhex (-> (nibbles 15) (bit-and 3) (+ 8) (.toString 16))]
+                     (core/uuid (str (hex 0)  (hex 1)  (hex 2)  (hex 3)
+                                     (hex 4)  (hex 5)  (hex 6)  (hex 7)  "-"
+                                     (hex 8)  (hex 9)  (hex 10) (hex 11) "-"
+                                     "4"      (hex 12) (hex 13) (hex 14) "-"
+                                     rhex     (hex 16) (hex 17) (hex 18) "-"
+                                     (hex 19) (hex 20) (hex 21) (hex 22)
+                                     (hex 23) (hex 24) (hex 25) (hex 26)
+                                     (hex 27) (hex 28) (hex 29) (hex 30))))))
+               (vector (choose 0 15) 31))))))
 
 (defn ^:private base-simple-type
   [double-gen char-gen string-gen]
-(one-of [int #?(:clj size-bounded-bigint :cljs large-integer) double-gen char-gen
-         string-gen ratio boolean keyword keyword-ns symbol symbol-ns uuid]))
+  (one-of [int #?(:clj size-bounded-bigint :cljs large-integer) double-gen char-gen
+           string-gen ratio boolean keyword keyword-ns symbol symbol-ns uuid]))
 
 (def simple-type
   "Generates a variety of scalar types."
-  (base-simple-type double char string))
+  #?(:clje
+     (thunk (base-simple-type double char string))
+     :default
+     (base-simple-type double char string)))
 
 (def simple-type-printable
   "Generates a variety of scalar types, with printable strings."
-  (base-simple-type double char-ascii string-ascii))
+  #?(:clje
+     (thunk (base-simple-type double char-ascii string-ascii))
+     :default
+     (base-simple-type double char-ascii string-ascii)))
 
 (def ^{:added "0.10.0"} simple-type-equatable
   "Like gen/simple-type, but only generates objects that can be
   equal to other objects (e.g., not a NaN)."
-  (base-simple-type (double* {:NaN? false}) char string))
+  #?(:clje
+     (thunk (base-simple-type (double* {:NaN? false}) char string))
+     :default
+     (base-simple-type (double* {:NaN? false}) char string)))
 
 (def ^{:added "0.10.0"} simple-type-printable-equatable
   "Like gen/simple-type-printable, but only generates objects that
   can be equal to other objects (e.g., not a NaN)."
-  (base-simple-type (double* {:NaN? false}) char-ascii string-ascii))
+  #?(:clje
+     (thunk (base-simple-type (double* {:NaN? false}) char-ascii string-ascii))
+     :default
+     (base-simple-type (double* {:NaN? false}) char-ascii string-ascii)))
 
 #?(:cljs
 ;; https://clojure.atlassian.net/browse/CLJS-1594
@@ -1749,7 +1887,8 @@
                    (randomized
                     (fn [rng]
                       (core/let [sizes (random-pseudofactoring max-leaf-count rng)
-                                 sized-scalar-gen (resize size scalar-gen)]
+                                 sized-scalar-gen (resize size #?(:clje (resolve-gen scalar-gen)
+                                                                  :default scalar-gen))]
                         (reduce (fn [g size]
                                   (bind (choose 0 10)
                                         (fn [x]
@@ -1762,12 +1901,18 @@
 
 (def any
   "A recursive generator that will generate many different, often nested, values"
-  (recursive-gen container-type simple-type))
+  #?(:clje
+     (thunk (recursive-gen container-type simple-type))
+     :default
+     (recursive-gen container-type simple-type)))
 
 (def any-printable
   "Like any, but avoids characters that the shell will interpret as actions,
   like 7 and 14 (bell and alternate character set command)"
-  (recursive-gen container-type simple-type-printable))
+  #?(:clje
+     (thunk (recursive-gen container-type simple-type-printable))
+     :default
+     (recursive-gen container-type simple-type-printable)))
 
 (def ^{:added "0.10.0"} any-equatable
   "Like any, but only generates objects that can be equal to other objects (e.g., do
@@ -1822,7 +1967,7 @@
   (if (empty? bindings)
     `(core/let [val# (do ~@body)]
        (if (clojure.test.check.generators/generator? val#)
-         val#
+         #?(:clje (resolve-gen val#) :default val#)
          (return val#)))
     (core/let [[binding gen & more] bindings]
       `(clojure.test.check.generators/bind ~gen (fn [~binding] (let [~@more] ~@body))))))
