@@ -75,29 +75,38 @@
                               {:bad-options options}))))
 
 (defmacro defspec
-  "Defines a new clojure.test test var that uses `quick-check` to verify the
+   "Defines a new clojure.test test var that uses `quick-check` to verify the
   property, running num-times trials by default.  You can call the function defined as `name`
   with no arguments to trigger this test directly (i.e., without starting a
   wider clojure.test run).  If called with arguments, the first argument is the number of
   trials, optionally followed by keyword arguments as defined for `quick-check`."
-  {:arglists '([name property] [name num-tests? property] [name options? property])}
-  ([name property] `(defspec ~name nil ~property))
-  ([name options property]
-   `(defn ~(vary-meta name assoc
-                      ::defspec true
-                      :test `(fn []
-                               (clojure.test.check.clojure-test/assert-check
-                                (assoc (~name) :test-var (str '~name)))))
-      {:arglists '([] ~'[num-tests & {:keys [seed max-size reporter-fn]}])}
-      ([] (let [options# (process-options ~options)]
-            (apply ~name (:num-tests options#) (apply concat options#))))
-      ([times# & {:as quick-check-opts#}]
-       (let [options# (merge (process-options ~options) quick-check-opts#)]
-         (apply
-          tc/quick-check
-          times#
-          (vary-meta ~property assoc :name '~name)
-          (apply concat options#)))))))
+   {:arglists '([name property] [name num-tests? property] [name options? property])}
+   ([name property] `(defspec ~name nil ~property))
+   ([name options property]
+    (let [#?@(:clje [test-fn-name (symbol (str name "__test"))])]
+      `(do
+         #?@(:clje
+             [(declare ~name)
+              (defn- ~test-fn-name []
+                (clojure.test.check.clojure-test/assert-check
+                 (assoc (~name) :test-var (str '~name))))])
+         (defn ~(vary-meta name assoc
+                           ::defspec true
+                           :test #?(:clje test-fn-name
+                                    :default
+                                    `(fn []
+                                       (clojure.test.check.clojure-test/assert-check
+                                        (assoc (~name) :test-var (str '~name))))))
+           {:arglists '([] ~'[num-tests & {:keys [seed max-size reporter-fn]}])}
+           ([] (let [options# (process-options ~options)]
+                 (apply ~name (:num-tests options#) (apply concat options#))))
+           ([times# & {:as quick-check-opts#}]
+            (let [options# (merge (process-options ~options) quick-check-opts#)]
+              (apply
+               tc/quick-check
+               times#
+               (vary-meta ~property assoc :name '~name)
+               (apply concat options#)))))))))
 
 (def ^:dynamic *report-trials*
   "Controls whether property trials should be reported via clojure.test/report.
