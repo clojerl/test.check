@@ -11,6 +11,8 @@
                [cljs.test :as test :refer-macros [are deftest testing is]])
             #?(:clj
                [clojure.test :refer :all])
+            #?(:clje
+               [clojure.test :refer :all])
             [clojure.test.check.results :as results]))
 
 (deftest default-passing-values

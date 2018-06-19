@@ -96,7 +96,8 @@
        (* 0xbf58476d1ce4e5b9)
        (bxoubsr 27)
        (* 0x94d049bb133111eb)
-       (bxoubsr 31)))
+       (bxoubsr 31)
+       (bit-and MAX_VALUE)))
 
 (defn bit-count
   [x]
@@ -115,6 +116,7 @@
        (* 0xc4ceb9fe1a85ec53)
        (bxoubsr 33)
        (bit-or 1)
+       (bit-and MAX_VALUE)
        (as-> z#
              (cond-> z#
                (> 24 (-> z#
