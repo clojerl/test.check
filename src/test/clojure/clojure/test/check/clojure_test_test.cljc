@@ -19,9 +19,13 @@
                  [cljs.reader :refer [read-string]]])
             #?(:clj
                [clojure.test :as test :refer :all])
+            #?(:clje
+               [clojure.test :as test :refer :all])
             [clojure.test.check.generators :as gen]
-            [clojure.test.check.properties :as prop]
-            [clojure.test.check.clojure-test :as ct :refer [defspec]]))
+            [clojure.test.check.properties :as prop #?@(:cljs [:include-macros true])]
+            [clojure.test.check.clojure-test :as ct #?@(:clj  [:refer (defspec)]
+                                                        :clje [:refer (defspec)]
+                                                        :cljs [:refer-macros (defspec)])]))
 
 (declare ^:dynamic test-report)
 
@@ -45,6 +49,17 @@
               :report-counters @*report-counters*
               :out out
               :test-out (str *test-out*)}))
+         :clje
+         (with-open [sw (erlang.io.StringWriter.)]
+           (binding [*report-counters*   *initial-report-counters*
+                     *test-out*          sw
+                     *testing-contexts*  (list)
+                     *testing-vars*      (list)]
+             (let [out (with-out-str (test-var v))]
+               {:reports @reports
+                :report-counters *report-counters*
+                :out out
+                :test-out (str *test-out*)})))
          :cljs
          (binding [test/*current-env* (test/empty-env)]
            (let [out (with-out-str (test-var v))]
@@ -103,6 +118,7 @@
   (binding [ct/*report-trials* true]
     (let [{:keys [out]} (capture-test-var #'trial-counts)]
       (is (re-matches #?(:clj (java.util.regex.Pattern/compile "(?s)\\.{5}.+")
+                         :clje #"\.{5}[\s\S]+"
                          :cljs #"\.{5}[\s\S]+")
                       out)))))
 
@@ -112,6 +128,8 @@
     #(do
        #?(:clj
           (Thread/sleep 1)
+          :clje
+          (timer/sleep 1)
           :cljs
           (let [start (.valueOf (js/Date.))]
             ;; let's do some busy waiting for 1 msec, so we avoid setTimeout
@@ -125,6 +143,7 @@
   "Allow time to progress to avoid timing issues with sub-millisecond code."
   [start]
   #?(:clj (Thread/sleep 1)
+     :clje (timer/sleep 1)
      :cljs (while (>= start (.valueOf (js/Date.)))
              (apply + (range 50)))))
 
@@ -158,7 +177,7 @@
   [v]
   (== (count v) (count (distinct v))))
 
-(def ^:private vector-elements-are-unique
+(#?(:clje gen/defgen :default def) ^:private vector-elements-are-unique
   (prop/for-all*
    [(gen/vector gen/small-integer)]
    vector-elements-are-unique*))
@@ -229,11 +248,11 @@
     (is (= 1 (count (re-seq #"this property is terrible" test-out)))
         "Only prints exceptions twice")))
 
-
 (defn test-ns-hook
   "Run only tests defined by deftest, ignoring those defined by defspec."
   []
   (let [tests (->> (vals (ns-interns #?(:clj (find-ns 'clojure.test.check.clojure-test-test)
+                                        :clje (find-ns 'clojure.test.check.clojure-test-test)
                                         :cljs 'clojure.test.check.clojure-test-test)))
                    (filter #(let [m (meta %)]
                               (and (:test m)

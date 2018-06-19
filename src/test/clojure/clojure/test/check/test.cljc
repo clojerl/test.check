@@ -14,19 +14,22 @@
                [cljs.test :as test :refer-macros [deftest testing is]])
             #?(:clj
                [clojure.test :refer :all])
+            #?(:clje
+               [clojure.test :refer :all])
             [clojure.test.check :as tc]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.rose-tree :as rose]
             [clojure.test.check.random :as random]
             [clojure.test.check.results :as results]
-            [clojure.test.check.clojure-test :as ct :refer [defspec]]
+            [clojure.test.check.clojure-test :as ct #?(:clj :refer :clje :refer :cljs :refer-macros) (defspec)]
             #?(:clj [clojure.test.check.test-specs :as specs])
             #?(:cljs [clojure.test.check.random.longs :as rl])
             #?(:clj  [clojure.edn :as edn]
+               ;; :clje [clojure.edn :as edn]
                :cljs [cljs.reader :as edn :refer [read-string]])))
 
-(def gen-seed
+(#?(:clje gen/defgen :default def) gen-seed
   (let [gen-int (gen/choose 0 0x100000000)]
     (gen/fmap (fn [[s1 s2]]
                 (bit-or s1 (bit-shift-left s2 32)))
@@ -105,7 +108,7 @@
 ;; exceptions shrink and return as result
 ;; ---------------------------------------------------------------------------
 
-(def exception (#?(:clj Exception. :cljs js/Error.) "I get caught"))
+(def exception (#?(:clj Exception. :clje clojerl.Error. :cljs js/Error.) "I get caught"))
 
 (defn exception-thrower
   [& args]
@@ -124,19 +127,30 @@
 ;; result-data
 ;; ---------------------------------------------------------------------------
 
+#?(:clje
+   (deftype ResultFoo1 []
+     results/Result
+     (pass? [this] false)
+     (result-data [this]
+       {:foo :bar :baz [42]})))
+
 (deftest custom-result-data-is-returned-on-failure
   (is (= {:foo :bar :baz [42]}
          (:result-data
           (tc/quick-check 100
                           (prop/for-all [x gen/nat]
-                            (reify results/Result
-                              (pass? [_] false)
-                              (result-data [_]
-                                {:foo :bar :baz [42]}))))))))
+                                        #?(:clje
+                                           (ResultFoo1.)
+                                           :default
+                                           (reify results/Result
+                                             (pass? [_] false)
+                                             (result-data [_]
+                                               {:foo :bar :baz [42]})))))))))
 
 ;; TCHECK-131
 (deftest exception-results-are-treated-as-failures-for-backwards-compatibility
   (doseq [e [(#?(:clj Exception.
+                 :clje clojerl.Error.
                  :cljs js/Error.)
               "Let's pretend this was thrown.")
              #?(:clj (Error. "Not an Exception, technically"))]]
@@ -214,7 +228,7 @@
 (deftest keyword-symbol-serialization-roundtrip
   (testing "For all keywords and symbol, (comp read-string pr-str) is identity."
     (is (:result
-         (tc/quick-check #?(:clj 1000 :cljs 100)
+         (tc/quick-check #?(:clj 1000 :clje 100 :cljs 100)
                          (prop/for-all [x (gen/one-of [gen/keyword
                                                        gen/keyword-ns
                                                        gen/symbol
@@ -306,7 +320,7 @@
             (is (:result (tc/quick-check 100
                                          (prop/for-all [x generator]
                                            (pred x))))))
-        is-char-fn #?(:clj char? :cljs string?)]
+        is-char-fn #?(:clj char? :clje char? :cljs string?)]
 
     (testing "keyword"              (t gen/keyword keyword?))
 
@@ -328,23 +342,23 @@
 ;; --------------------------------------------------------------------------
 
 (deftest such-that-allows-customizing-exceptions
-  (is (thrown-with-msg? #?(:clj Exception :cljs js/Error) #"Oh well!"
+  (is (thrown-with-msg? #?(:clj Exception :clje clojerl.Error :cljs js/Error) #"Oh well!"
                         (gen/generate
                          (gen/such-that
                           #(apply distinct? %)
                           (gen/vector gen/boolean 5)
                           {:ex-fn (fn [{:keys [pred gen max-tries]}]
                                     (is (and pred gen max-tries))
-                                    (#?(:clj Exception. :cljs js/Error.) "Oh well!"))})))))
+                                    (#?(:clj Exception. :clje clojerl.Error. :cljs js/Error.) "Oh well!"))})))))
 
 ;; Distinct collections
 ;; --------------------------------------------------------------------------
 
-(def gen-distinct-generator
+(#?(:clje gen/defgen :default def) gen-distinct-generator
   (gen/elements [gen/list-distinct gen/vector-distinct
                  gen/set gen/sorted-set]))
 
-(def gen-size-bounds-and-pred
+(#?(:clje gen/defgen :default def) gen-size-bounds-and-pred
   "Generates [pred size-opts], where size-opts is a map to pass to
   distinct generators, and pred is a predicate on the size of a
   collection, to check that it matches the options."
@@ -413,14 +427,14 @@
              gen/sorted-set
              (partial gen/vector-distinct-by pr-str)
              (partial gen/list-distinct-by pr-str)]]
-    (is (thrown-with-msg? #?(:clj Exception :cljs js/Error) #"Couldn't generate enough distinct elements"
+    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.Error :cljs js/Error) #"Couldn't generate enough distinct elements"
                           (first (gen/sample
                                   (g gen/boolean {:min-elements 5})))))
-    (is (thrown-with-msg? #?(:clj Exception :cljs js/Error) #"foo bar"
+    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.Error :cljs js/Error) #"foo bar"
                           (first (gen/sample
                                   (g gen/boolean {:min-elements 5
                                                   :ex-fn (fn [arg] (ex-info "foo bar" arg))}))))))
-  (is (thrown? #?(:clj Exception :cljs js/Error)
+  (is (thrown? #?(:clj Exception :clje clojerl.Error :cljs js/Error)
                (first (gen/sample
                        (gen/map gen/boolean gen/nat {:min-elements 5}))))))
 
@@ -472,10 +486,10 @@
   (let [ex (try
              (gen/generate (gen/set gen/boolean {:num-elements 5}))
              (is false)
-             (catch #?(:clj Exception :cljs js/Error) e
+             (catch #?(:clj Exception :clje clojerl.Error :cljs js/Error) e
                e))]
     (is (re-find #"Couldn't generate enough distinct elements"
-                 #? (:clj (.getMessage ^Exception ex) :cljs (.-message ex))))
+                 #? (:clj (.getMessage ^Exception ex) :clje (.message ^clojerl.Error ex) :cljs (.-message ex))))
     (is (= 5 (-> ex ex-data :num-elements)))))
 
 ;; Generating proper matrices
@@ -495,7 +509,7 @@
                        [mtx (gen/vector (gen/vector gen/small-integer 3) 3)]
                         (proper-matrix? mtx)))))))
 
-(def bounds-and-vector
+(#?(:clje gen/defgen :default def) bounds-and-vector
   (gen/bind (gen/tuple gen/s-pos-int gen/s-pos-int)
             (fn [[a b]]
               (let [minimum (min a b)
@@ -520,7 +534,7 @@
   [n]
   (vec (repeat n gen/small-integer)))
 
-(def tuples
+(#?(:clje gen/defgen :default def) tuples
   [(apply gen/tuple (n-int-generators 1))
    (apply gen/tuple (n-int-generators 2))
    (apply gen/tuple (n-int-generators 3))
@@ -547,11 +561,11 @@
 ;; Bind works
 ;; ---------------------------------------------------------------------------
 
-(def nat-vec
+(#?(:clje gen/defgen :default def) nat-vec
   (gen/such-that not-empty
                  (gen/vector gen/nat)))
 
-(def vec-and-elem
+(#?(:clje gen/defgen :default def) vec-and-elem
   (gen/bind nat-vec
             (fn [v]
               (gen/tuple (gen/elements v) (gen/return v)))))
@@ -563,7 +577,7 @@
 ;; fmap is respected during shrinking
 ;; ---------------------------------------------------------------------------
 
-(def plus-fifty
+(#?(:clje gen/defgen :default def) plus-fifty
   (gen/fmap (partial + 50) gen/nat))
 
 (deftest f-map-respected-during-shrinking
@@ -609,13 +623,13 @@
            ;; shrink-time should be in proportion to the log of the
            ;; collection size; multiplying by 3 to add some wiggle
            ;; room
-           (< total-nodes-visited (+ 5 (* 3 (Math/log failing-size))))))))
+           (< total-nodes-visited (+ 5 (* 3 (#?(:clje math/log :default Math/log) failing-size))))))))
 
 ;; gen/small-integer returns an integer when size is a double; regression for TCHECK-73
 ;; ---------------------------------------------------------------------------
 
-(def gen-double
-  (gen/fmap (fn [[x y]] (double (+ x (/ y 10))))
+(#?(:clje gen/defgen :default def) gen-double
+  (gen/fmap (fn [[x y]] (#?(:clje float :default double) (+ x (/ y 10))))
             (gen/tuple gen/nat (gen/choose 0 9))))
 
 (defspec gen-int-with-double-size 1000
@@ -704,7 +718,7 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest elements-with-empty
-  (is (thrown? #?(:clj AssertionError :cljs js/Error)
+  (is (thrown? #?(:clj AssertionError :clje clojerl.Error :cljs js/Error)
                (gen/elements ()))))
 
 (defspec elements-with-a-set 100
@@ -714,7 +728,7 @@
 ;; choose respects bounds during shrinking
 ;; ---------------------------------------------------------------------------
 
-(def range-gen
+(#?(:clje gen/defgen :default def) range-gen
   (gen/fmap (fn [[a b]]
               [(min a b) (max a b)])
             (gen/tuple gen/small-integer gen/small-integer)))
@@ -787,7 +801,7 @@
 ;; shuffling a vector generates a permutation of that vector
 ;; ---------------------------------------------------------------------------
 
-(def original-vector-and-permutation
+(#?(:clje gen/defgen :default def) original-vector-and-permutation
   (gen/bind (gen/vector gen/small-integer)
             #(gen/tuple (gen/return %) (gen/shuffle %))))
 
@@ -800,7 +814,7 @@
 
 (defspec uuid-generates-uuids
   (prop/for-all [uuid gen/uuid]
-    (and (instance? #?(:clj java.util.UUID :cljs cljs.core.UUID) uuid)
+    (and (instance? #?(:clj java.util.UUID :clje erlang.util.UUID :cljs cljs.core.UUID) uuid)
          ;; check that we got the special fields right
          (re-matches #"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
                      (str uuid)))))
@@ -824,12 +838,17 @@
                              [{:min lb :max ub} #(<= lb % ub)]))
                          (gen/tuple num-gen num-gen))]))
 
-(def MAX_INTEGER #?(:clj Long/MAX_VALUE :cljs (dec (apply * (repeat 53 2)))))
-(def MIN_INTEGER #?(:clj Long/MIN_VALUE :cljs (- MAX_INTEGER)))
+(def MAX_INTEGER #?(:clj Long/MAX_VALUE
+                    :clje (dec (apply * (repeat 63 2)))
+                    :cljs (dec (apply * (repeat 53 2)))))
+(def MIN_INTEGER #?(:clj Long/MIN_VALUE
+                    :clje (- MAX_INTEGER)
+                    :cljs (- MAX_INTEGER)))
 
 (defn native-integer?
   [x]
   #?(:clj (instance? Long x)
+     :clje (and (integer? x) (<= MIN_INTEGER x MAX_INTEGER))
      :cljs (and (integer? x) (<= MIN_INTEGER x MAX_INTEGER))))
 
 (defspec large-integer-spec 500
@@ -873,6 +892,7 @@
 (defspec double-test 100
   (prop/for-all [x gen/double]
     #?(:clj (instance? Double x)
+       :clje (float? x)
        :cljs (number? x))))
 
 (defspec double-distribution-test 5
@@ -1249,6 +1269,12 @@
 ;; TCHECK-142
 ;; ---------------------------------------------------------------------------
 
+#?(:clje
+   (deftype ResultFoo2 [x]
+     results/Result
+     (pass? [_] (< x 70))
+     (result-data [_] {:foo 42 :x x})))
+
 (deftest quick-check-result-keys-test
   (testing "Pass"
     (let [m (tc/quick-check 10 (prop/for-all [x gen/nat] x))]
@@ -1262,9 +1288,12 @@
       (is (nil? (:result-data m)))))
   (testing "Protocol Fail"
     (let [m (tc/quick-check 1000 (prop/for-all [x gen/nat]
-                                   (reify results/Result
-                                     (pass? [_] (< x 70))
-                                     (result-data [_] {:foo 42 :x x}))))]
+                                   #?(:clje
+                                      (ResultFoo2. x)
+                                      :default
+                                      (reify results/Result
+                                        (pass? [_] (< x 70))
+                                        (result-data [_] {:foo 42 :x x})))))]
       (is (false? (:result m)))
       (is (false? (:pass? m)))
       (let [[x] (:fail m)]
@@ -1276,6 +1305,7 @@
                                        (throw (ex-info "Dang!" {:x x})))))]
       ;; okay maybe this is where cljs needs to do something different
       (is (instance? #?(:clj  clojure.lang.ExceptionInfo
+                        :clje clojerl.ExceptionInfo
                         :cljs ExceptionInfo)
                      (:result m))
           "legacy position for the error object")

@@ -11,7 +11,9 @@
   (:require [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
             [clojure.test.check.rose-tree :as rose]
-            [clojure.test.check.clojure-test :as ct :refer [defspec]]))
+            [clojure.test.check.clojure-test :as ct #?@(:clj  [:refer (defspec)]
+                                                        :clje [:refer (defspec)]
+                                                        :cljs [:refer-macros (defspec)])]))
 
 (defn depth-one-children
   [rose]
