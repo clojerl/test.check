@@ -531,16 +531,19 @@
   (gen-fmap rose/collapse #?(:clje (resolve-gen gen) :default gen)))
 
 #?(:clje
-   (defmacro thunk [& forms]
-     `(clojure.core/fn []
-        ~@forms)))
+   (defmacro defgen [name & gendecl]
+     (core/let [m       (if (string? (first gendecl))
+                          {:doc (first gendecl)}
+                          {})
+                gendecl (if (string? (first gendecl))
+                          (next gendecl)
+                          gendecl)
+                m       (assoc m :gen? true)]
+       `(defn ~(with-meta name m) [] ~@gendecl))))
 
-(def boolean
+(#?(:clje defgen :default def) boolean
   "Generates one of `true` or `false`. Shrinks to `false`."
-  #?(:clje
-     (thunk (elements [false true]))
-     :default
-     (elements [false true])))
+  (elements [false true]))
 
 (defn tuple
   "Create a generator that returns a vector, whose elements are chosen
@@ -560,46 +563,31 @@
               (rose/zip core/vector roses))
             (gen-tuple #?(:clje (core/map resolve-gen generators) :default generators))))
 
-(def int
+(#?(:clje defgen :default def) int
   "Generates a positive or negative integer bounded by the generator's
   `size` parameter."
-  #?(:clje
-     (thunk (sized (fn [size] (choose (- size) size))))
-     :default
-     (sized (fn [size] (choose (- size) size)))))
+  (sized (fn [size] (choose (- size) size))))
 
-(def nat
+(#?(:clje defgen :default def) nat
   "Generates non-negative integers bounded by the generator's `size`
   parameter. Shrinks to zero."
-  #?(:clje
-     (thunk (fmap #(#?(:clje erlang/abs :default Math/abs) %) (int)))
-     :default
-     (fmap #(#?(:clje erlang/abs :default Math/abs) %) int)))
+  (fmap #(#?(:clje erlang/abs :default Math/abs) %) int))
 
 (def pos-int
   "Generate positive integers bounded by the generator's `size` parameter."
   nat)
 
-(def neg-int
+(#?(:clje defgen :default def) neg-int
   "Generate negative integers bounded by the generator's `size` parameter."
-  #?(:clje
-     (thunk (fmap #(* -1 %) (nat)))
-     :default
-     (fmap #(* -1 %) nat)))
+  (fmap #(* -1 %) nat))
 
-(def s-pos-int
+(#?(:clje defgen :default def) s-pos-int
   "Generate strictly positive integers bounded by the generator's `size` + 1"
-  #?(:clje
-     (thunk (fmap inc (nat)))
-     :default
-     (fmap inc nat)))
+  (fmap inc nat))
 
-(def s-neg-int
+(#?(:clje defgen :default def) s-neg-int
   "Generate strictly negative integers bounded by the generator's `size` + 1"
-  #?(:clje
-     (thunk (fmap dec (neg-int)))
-     :default
-     (fmap dec neg-int)))
+  (fmap dec neg-int))
 
 (defn vector
   "Create a generator of vectors whose elements are chosen from
@@ -1009,14 +997,10 @@
 ;; This approach has a few distribution edge cases, but is pretty good
 ;; for expected uses and is way better than nothing.
 
-(def ^:private gen-raw-long
+(#?(:clje defgen :default def) ^:private gen-raw-long
   "Generates a single uniformly random long, does not shrink."
-  #?(:clje
-     (thunk (make-gen (fn [rnd _size]
-                 (rose/pure (random/rand-long rnd)))))
-     :default
-     (make-gen (fn [rnd _size]
-                 (rose/pure (random/rand-long rnd))))))
+  (make-gen (fn [rnd _size]
+              (rose/pure (random/rand-long rnd)))))
 
 (def ^:private MAX_INTEGER
   #?(:clj Long/MAX_VALUE
@@ -1091,16 +1075,13 @@
                    (fmap #(+ max %) (large-integer** (- min max) 0))
                    (fmap #(+ min %) (large-integer** 0 (- max min))))))))
 
-(def ^{:added "0.9.0"} large-integer
+(#?(:clje defgen :default def) ^{:added "0.9.0"} large-integer
   "Generates a platform-native integer from the full available range
   (in clj, 64-bit Longs, and in cljs, numbers between -(2^53 - 1) and
   (2^53 - 1)).
 
   Use large-integer* for more control."
-  #?(:clje
-     (thunk (large-integer* {}))
-     :default
-     (large-integer* {})))
+  (large-integer* {}))
 
 ;; doubles
 ;; ---------------------------------------------------------------------------
@@ -1181,21 +1162,14 @@
                  (/ n 2)
                  (/ out-shifter 2))))))
 
-(def ^:private backwards-shrinking-significand
+(#?(:clje defgen :default def) ^:private backwards-shrinking-significand
   "Generates a 52-bit non-negative integer that shrinks toward having
   fewer lower-order bits (and shrinks to 0 if possible)."
-  #?(:clje
-     (thunk (fmap fifty-two-bit-reverse
-                  (sized (fn [size]
-                           (gen-bind (choose 0 (min size 52))
-                                     (fn [rose]
-                                       (uniform-integer (rose/root rose))))))))
-     :default
-     (fmap fifty-two-bit-reverse
-           (sized (fn [size]
-                    (gen-bind (choose 0 (min size 52))
-                              (fn [rose]
-                                (uniform-integer (rose/root rose)))))))))
+  (fmap fifty-two-bit-reverse
+        (sized (fn [size]
+                 (gen-bind (choose 0 (min size 52))
+                           (fn [rose]
+                             (uniform-integer (rose/root rose))))))))
 
 #?(:clje (def ^:private LOG2E 1.4426950408889634))
 
@@ -1360,41 +1334,28 @@
       (-> frequency-arg first second)
       (frequency frequency-arg))))
 
-(def ^{:added "0.9.0"} double
+(#?(:clje defgen :default def) ^{:added "0.9.0"} double
   "Generates 64-bit floating point numbers from the entire range,
   including +/- infinity and NaN. Use double* for more control."
-  #?(:clje (thunk (double* {}))
-     :default (double* {})))
+  (double* {}))
 
 ;; Characters & Strings
 ;; ---------------------------------------------------------------------------
 
-(def char
+(#?(:clje defgen :default def) char
   "Generates character from 0-255."
-  #?(:clje
-     (thunk (fmap core/char (choose 0 255)))
-     :default
-     (fmap core/char (choose 0 255))))
+  (fmap core/char (choose 0 255)))
 
-(def char-ascii
+(#?(:clje defgen :default def) char-ascii
   "Generate only ascii character."
-  #?(:clje
-     (thunk (fmap core/char (choose 32 126)))
-     :default
-     (fmap core/char (choose 32 126))))
+  (fmap core/char (choose 32 126)))
 
-(def char-alphanumeric
+(#?(:clje defgen :default def) char-alphanumeric
   "Generate alphanumeric characters."
-  #?(:clje
-     (thunk (fmap core/char
-                  (one-of [(choose 48 57)
-                           (choose 65 90)
-                           (choose 97 122)])))
-     :default
-     (fmap core/char
-           (one-of [(choose 48 57)
-                    (choose 65 90)
-                    (choose 97 122)]))))
+  (fmap core/char
+     (one-of [(choose 48 57)
+              (choose 65 90)
+              (choose 97 122)])))
 
 (def ^{:deprecated "0.6.0"}
   char-alpha-numeric
@@ -1403,64 +1364,38 @@
   Generate alphanumeric characters."
   char-alphanumeric)
 
-(def char-alpha
+(#?(:clje defgen :default def) char-alpha
   "Generate alpha characters."
-  #?(:clje
-     (thunk (fmap core/char
-                  (one-of [(choose 65 90)
-                           (choose 97 122)])))
-     :default
-     (fmap core/char
-           (one-of [(choose 65 90)
-                    (choose 97 122)]))))
+  (fmap core/char
+     (one-of [(choose 65 90)
+              (choose 97 122)])))
 
-(def ^:private char-symbol-special
+(#?(:clje defgen :default def) ^:private char-symbol-special
   "Generate non-alphanumeric characters that can be in a symbol."
-  #?(:clje
-     (thunk (elements [\* \+ \! \- \_ \? \.]))
-     :default
-     (elements [\* \+ \! \- \_ \? \.])))
+  (elements [\* \+ \! \- \_ \? \.]))
 
-(def ^:private char-symbol-noninitial
+(#?(:clje defgen :default def) ^:private char-symbol-noninitial
   "Generate characters that can be the char following first of a keyword or symbol."
-  #?(:clje
-     (thunk (frequency [[14 char-alphanumeric]
-                        [7 char-symbol-special]
-                        [1 (return \:)]]))
-     :default
-     (frequency [[14 char-alphanumeric]
-                 [7 char-symbol-special]
-                 [1 (return \:)]])))
+  (frequency [[14 char-alphanumeric]
+                [7 char-symbol-special]
+                [1 (return \:)]]))
 
-(def ^:private char-symbol-initial
+(#?(:clje defgen :default def) ^:private char-symbol-initial
   "Generate characters that can be the first char of a keyword or symbol."
-  #?(:clje
-     (thunk (frequency [[2 char-alpha]
-                        [1 char-symbol-special]]))
-     :default
-     (frequency [[2 char-alpha]
-                 [1 char-symbol-special]])))
+  (frequency [[2 char-alpha]
+                [1 char-symbol-special]]))
 
-(def string
+(#?(:clje defgen :default def) string
   "Generate strings. May generate unprintable characters."
-  #?(:clje
-     (thunk (fmap clojure.string/join (vector char)))
-     :default
-     (fmap clojure.string/join (vector char))))
+  (fmap clojure.string/join (vector char)))
 
-(def string-ascii
+(#?(:clje defgen :default def) string-ascii
   "Generate ascii strings."
-  #?(:clje
-     (thunk (fmap clojure.string/join (vector char-ascii)))
-     :default
-     (fmap clojure.string/join (vector char-ascii))))
+  (fmap clojure.string/join (vector char-ascii)))
 
-(def string-alphanumeric
+(#?(:clje defgen :default def) string-alphanumeric
   "Generate alphanumeric strings."
-  #?(:clje
-     (thunk (fmap clojure.string/join (vector char-alphanumeric)))
-     :default
-     (fmap clojure.string/join (vector char-alphanumeric))))
+  (fmap clojure.string/join (vector char-alphanumeric)))
 
 (def ^{:deprecated "0.6.0"}
   string-alpha-numeric
@@ -1486,24 +1421,15 @@
                          (#?(:clj = :clje identical? :cljs identical?) \- c))
                      (digit? d))))
 
-(def ^:private symbol-name-or-namespace
+(#?(:clje defgen :default def) ^:private symbol-name-or-namespace
   "Generates a namespace string for a symbol/keyword."
-  #?(:clje
-     (thunk (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
-                 (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
-                 (fmap (fn [[c cs]]
-                         (core/let [s (clojure.string/join (cons c cs))]
-                           (-> s
-                               (string/replace #":{2,}" ":")
-                               (string/replace #":$" "")))))))
-     :default
-     (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
-          (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
-          (fmap (fn [[c cs]]
-                  (core/let [s (clojure.string/join (cons c cs))]
-                    (-> s
-                        (string/replace #":{2,}" ":")
-                        (string/replace #":$" ""))))))))
+  (->> (tuple char-symbol-initial (vector char-symbol-noninitial))
+     (such-that (fn [[c [d]]] (not (+-or---digit? c d))))
+     (fmap (fn [[c cs]]
+             (core/let [s (clojure.string/join (cons c cs))]
+               (-> s
+                   (string/replace #":{2,}" ":")
+                   (string/replace #":$" "")))))))
 
 (defn ^:private resize-symbolish-generator
   "Scales the sizing down on a keyword or symbol generator so as to
@@ -1513,84 +1439,56 @@
   #?(:clje (scale #(math/pow % 0.60) g)
      :default (scale #(long (Math/pow % 0.60)) g)))
 
-(def keyword
+(#?(:clje defgen :default def) keyword
   "Generate keywords without namespaces."
-  #?(:clje
-     (thunk (frequency [[100
-                         (->> symbol-name-or-namespace
-                              (fmap core/keyword)
-                              (resize-symbolish-generator))]
-                        [1 (return :/)]]))
-     :default
-     (frequency [[100
-                  (->> symbol-name-or-namespace
-                       (fmap core/keyword)
-                       (resize-symbolish-generator))]
-                 [1 (return :/)]])))
+  (frequency [[100
+               (->> symbol-name-or-namespace
+                    (fmap core/keyword)
+                    (resize-symbolish-generator))]
+              [1 (return :/)]]))
 
-(def
+(#?(:clje defgen :default def)
   ^{:added "0.5.9"}
   keyword-ns
   "Generate keywords with namespaces."
-  #?(:clje
-     (thunk (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-                 (fmap (fn [[ns name]] (core/keyword ns name)))
-                 (resize-symbolish-generator)))
-     :default
-     (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-          (fmap (fn [[ns name]] (core/keyword ns name)))
-          (resize-symbolish-generator))))
+  (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+       (fmap (fn [[ns name]] (core/keyword ns name)))
+       (resize-symbolish-generator)))
 
-(def symbol
-  "Generate symbols without namespaces."
-  #?(:clje
-     (thunk (frequency [[100
-                         (->> symbol-name-or-namespace
-                              (fmap core/symbol)
-                              (resize-symbolish-generator))]
-                        [1 (return '/)]]))
-     :default
-     (frequency [[100
-                  (->> symbol-name-or-namespace
-                       (fmap core/symbol)
-                       (resize-symbolish-generator))]
-                 [1 (return '/)]])))
+(#?(:clje defgen :default def) symbol
+ "Generate symbols without namespaces."
+  (frequency [[100
+               (->> symbol-name-or-namespace
+                      (fmap core/symbol)
+                      (resize-symbolish-generator))]
+              [1 (return '/)]]))
 
-(def
+(#?(:clje defgen :default def)
   ^{:added "0.5.9"}
   symbol-ns
   "Generate symbols with namespaces."
-  #?(:clje
-     (thunk (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-                 (fmap (fn [[ns name]] (core/symbol ns name)))
-                 (resize-symbolish-generator)))
-     :default
-     (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
-          (fmap (fn [[ns name]] (core/symbol ns name)))
-          (resize-symbolish-generator))))
+  (->> (tuple symbol-name-or-namespace symbol-name-or-namespace)
+       (fmap (fn [[ns name]] (core/symbol ns name)))
+       (resize-symbolish-generator)))
 
-(def ratio
+(#?(:clje defgen :default def) ratio
   "Generates a `clojure.lang.Ratio`. Shrinks toward 0. Not all values generated
   will be ratios, as many values returned by `/` are not ratios."
-  #?(:clje
-     (thunk (fmap
-             (fn [[a b]] (/ a b))
-             (tuple int
-                    (such-that (complement zero?) int))))
-     :default
-     (fmap
-      (fn [[a b]] (/ a b))
-      (tuple int
-             (such-that (complement zero?) int)))))
+  (fmap
+   (fn [[a b]] (/ a b))
+   (tuple int
+          (such-that (complement zero?) int))))
 
-(def ^{:added "0.9.0"} uuid
-  "Generates a random type-4 UUID. Does not shrink."
-  #?(:clje
-     ;; TODO [clje]: this might be an over-simplification
-     (thunk (no-shrink (make-gen
-                        (fn [rng _size]
-                          (rose/make-rose (erlang.util.UUID/random ) [])))))
-     :default
+#?(:clje
+   (defgen ^{:added "0.9.0"} uuid
+     "Generates a random type-4 UUID. Does not shrink."
+     (no-shrink (make-gen
+                 (fn [rng _size]
+                   (rose/make-rose (erlang.util.UUID/random ) [])))))
+
+   :default
+   (def ^{:added "0.9.0"} uuid
+     "Generates a random type-4 UUID. Does not shrink."
      (no-shrink
       #?(:clj
          ;; this could be done with combinators, but doing it low-level
@@ -1623,21 +1521,13 @@
                                      (hex 27) (hex 28) (hex 29) (hex 30))))))
                (vector (choose 0 15) 31))))))
 
-(def simple-type
-  #?(:clje
-     (thunk (one-of [int large-integer double char string ratio boolean keyword
-                     keyword-ns symbol symbol-ns uuid]))
-     :default
-     (one-of [int large-integer double char string ratio boolean keyword
-              keyword-ns symbol symbol-ns uuid])))
+(#?(:clje defgen :default def) simple-type
+  (one-of [int large-integer double char string ratio boolean keyword
+           keyword-ns symbol symbol-ns uuid]))
 
-(def simple-type-printable
-  #?(:clje
-     (thunk (one-of [int large-integer double char-ascii string-ascii ratio boolean
-                     keyword keyword-ns symbol symbol-ns uuid]))
-     :default
-     (one-of [int large-integer double char-ascii string-ascii ratio boolean
-              keyword keyword-ns symbol symbol-ns uuid])))
+(#?(:clje defgen :default def) simple-type-printable
+   (one-of [int large-integer double char-ascii string-ascii ratio boolean
+            keyword keyword-ns symbol symbol-ns uuid]))
 
 #?(:cljs
 ;; http://dev.clojure.org/jira/browse/CLJS-1594
@@ -1764,20 +1654,14 @@
                                 sized-scalar-gen
                                 sizes)))))))))
 
-(def any
+(#?(:clje defgen :default def) any
   "A recursive generator that will generate many different, often nested, values"
-  #?(:clje
-     (thunk (recursive-gen container-type simple-type))
-     :default
-     (recursive-gen container-type simple-type)))
+  (recursive-gen container-type simple-type))
 
-(def any-printable
+(#?(:clje defgen :default def) any-printable
   "Like any, but avoids characters that the shell will interpret as actions,
   like 7 and 14 (bell and alternate character set command)"
-  #?(:clje
-     (thunk (recursive-gen container-type simple-type-printable))
-     :default
-     (recursive-gen container-type simple-type-printable)))
+  (recursive-gen container-type simple-type-printable))
 
 ;; Macros
 ;; ---------------------------------------------------------------------------

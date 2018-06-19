@@ -82,7 +82,8 @@
    {:arglists '([name property] [name num-tests? property] [name options? property])}
    ([name property] `(defspec ~name nil ~property))
    ([name options property]
-    (let [#?@(:clje [test-fn-name (symbol (str name "__test"))])]
+    (let [#?@(:clje [test-fn-name (symbol (str (ns-name *ns*)) (str name "__test"))
+                     property `(clojure.test.check.generators/resolve-gen ~property)])]
       `(do
          #?@(:clje
              [(declare ~name)
@@ -91,7 +92,7 @@
                  (assoc (~name) :test-var (str '~name))))])
          (defn ~(vary-meta name assoc
                            ::defspec true
-                           :test #?(:clje test-fn-name
+                           :test #?(:clje (list 'quote test-fn-name)
                                     :default
                                     `(fn []
                                        (clojure.test.check.clojure-test/assert-check
