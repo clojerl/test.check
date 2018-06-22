@@ -17,7 +17,8 @@
   (result-data [_]
     ;; spelling out the whole keyword here since `::error` is
     ;; different in self-hosted cljs.
-    {:clojure.test.check.properties/error error}))
+    {:clojure.test.check.properties/error error
+     #?@(:clje [:clojure.test.check.properties/stack (erlang/get_stacktrace)])}))
 
 (defn ^:private exception?
   [x]

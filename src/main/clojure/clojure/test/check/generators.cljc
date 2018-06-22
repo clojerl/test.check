@@ -196,10 +196,14 @@
    (generate generator 30))
   ([generator size]
    (core/let [rng (random/make-random)]
-     (rose/root (call-gen generator rng size))))
+     (rose/root (call-gen #?(:clje (resolve-gen generator)
+                             :default generator)
+                          rng size))))
   ([generator size seed]
    (core/let [rng (random/make-random seed)]
-     (rose/root (call-gen generator rng size)))))
+     (rose/root (call-gen #?(:clje (resolve-gen generator)
+                             :default generator)
+                          rng size)))))
 
 ;; Internal Helpers
 ;; ---------------------------------------------------------------------------
