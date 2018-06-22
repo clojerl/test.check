@@ -1418,7 +1418,7 @@
 (defn- digit?
   [d]
   #?(:clj  (Character/isDigit ^Character d)
-     :clje (re-matches #"[0-9]" d)
+     :clje (<= "0" d "9")
      :cljs (gstring/isNumeric d)))
 
 (defn- +-or---digit?
@@ -1647,23 +1647,23 @@
   ;;
   ;; This is all a bit weird and hard to explain precisely but I think
   ;; it works reasonably and definitely better than the old code.
-  (sized (fn [size]
-           (bind (choose 0 (size->max-leaf-count size))
-                 (fn [max-leaf-count]
-                   (randomized
-                    (fn [rng]
-                      (core/let [sizes (random-pseudofactoring max-leaf-count rng)
-                                 sized-scalar-gen (resize size #?(:clje (resolve-gen scalar-gen)
-                                                                  :default scalar-gen))]
-                        (reduce (fn [g size]
-                                  (bind (choose 0 10)
-                                        (fn [x]
-                                          (if (zero? x)
-                                            sized-scalar-gen
-                                            (resize size
-                                                    (container-gen-fn g))))))
-                                sized-scalar-gen
-                                sizes)))))))))
+  (core/let [#?@(:clje [scalar-gen (resolve-gen scalar-gen)])]
+    (sized (fn [size]
+             (bind (choose 0 (size->max-leaf-count size))
+                   (fn [max-leaf-count]
+                     (randomized
+                      (fn [rng]
+                        (core/let [sizes (random-pseudofactoring max-leaf-count rng)
+                                   sized-scalar-gen (resize size scalar-gen)]
+                          (reduce (fn [g size]
+                                    (bind (choose 0 10)
+                                          (fn [x]
+                                            (if (zero? x)
+                                              sized-scalar-gen
+                                              (resize size
+                                                      (container-gen-fn g))))))
+                                  sized-scalar-gen
+                                  sizes))))))))))
 
 (#?(:clje defgen :default def) any
   "A recursive generator that will generate many different, often nested, values"
