@@ -587,9 +587,10 @@
   [& generators]
   (assert (every? generator? generators)
           "Args to tuple must be generators")
-  (gen-fmap (fn [roses]
-              (rose/zip core/vector roses))
-            (gen-tuple #?(:clje (core/map resolve-gen generators) :default generators))))
+  (core/let [#?@(:clje [generators (core/map resolve-gen generators)])]
+    (gen-fmap (fn [roses]
+                (rose/zip core/vector roses))
+              (gen-tuple generators))))
 
 (#?(:clje defgen :default def) nat
   "Generates non-negative integers bounded by the generator's `size`
@@ -737,11 +738,12 @@
   [& kvs]
   (assert (even? (count kvs)))
   (core/let [ks (take-nth 2 kvs)
-             vs (take-nth 2 (rest kvs))]
+             vs (take-nth 2 (rest kvs))
+             #?@(:clje [vs (core/map resolve-gen vs)])]
     (assert (every? generator? vs)
             "Value args to hash-map must be generators")
     (fmap #(zipmap ks %)
-          (apply tuple #?(:clje (core/map resolve-gen vs) :default vs)))))
+          (apply tuple vs))))
 
 ;; Collections of distinct elements
 ;; (has to be done in a low-level way (instead of with combinators)
