@@ -79,7 +79,7 @@
                               {:bad-options options}))))
 
 (defmacro defspec
-   "Defines a new clojure.test test var that uses `quick-check` to verify the
+  "Defines a new clojure.test test var that uses `quick-check` to verify the
   property, running num-times trials by default.  You can call the function defined as `name`
   with no arguments to trigger this test directly (i.e., without starting a
   wider clojure.test run).  If called with arguments, the first argument is the number of
