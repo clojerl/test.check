@@ -29,16 +29,26 @@
 
 (declare ^:dynamic test-report)
 
-(defn capturing-report [reports m]
-  (swap! reports conj m)
-  (test-report m))
+#?(:clje (def ^:private reports (atom [])))
+
+#?(:clje
+   (defn capturing-report [m]
+     (swap! reports conj m)
+     (test-report m))
+   :default
+   (defn capturing-report [reports m]
+     (swap! reports conj m)
+     (test-report m)))
 
 (defn ^:private capture-test-var
   "Returns map of :reports, :report-counters, :out, and :test-out."
   [v]
-  (let [reports (atom [])]
+  (let #?(:clje [_ (reset! reports [])]
+          :default [reports (atom [])])
     (binding [test-report test/report
-              test/report (partial capturing-report reports)]
+              test/report #?(:clje capturing-report
+                             :default (partial capturing-report reports))
+              ]
       #?(:clj
          (binding [*report-counters*   (ref *initial-report-counters*)
                    *test-out*          (java.io.StringWriter.)
@@ -94,7 +104,7 @@
                          :result    true
                          :num-tests ct/*default-test-count*})))))
 
-(def trial-counts-num-tests 5000)
+(def trial-counts-num-tests #?(:clje 1000 :default 5000))
 (defspec trial-counts trial-counts-num-tests
   (prop/for-all* [gen/int] (constantly true)))
 
@@ -118,7 +128,7 @@
   (binding [ct/*report-trials* true]
     (let [{:keys [out]} (capture-test-var #'trial-counts)]
       (is (re-matches #?(:clj (java.util.regex.Pattern/compile "(?s)\\.{5}.+")
-                         :clje #"\.{5}[\s\S]+"
+                         :clje #"\.{1}[\s\S]+"
                          :cljs #"\.{5}[\s\S]+")
                       out)))))
 
