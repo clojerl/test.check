@@ -580,7 +580,7 @@
 (#?(:clje defgen :default def) nat
   "Generates non-negative integers bounded by the generator's `size`
   parameter. Shrinks to zero."
-  (fmap #(#?(:clje erlang/abs :default Math/abs) %) int))
+  (fmap #?(:clje #(erlang/abs %) :default #(Math/abs (long %))) int))
 
 (def pos-int
   "Generate positive integers bounded by the generator's `size` parameter."
