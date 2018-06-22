@@ -19,7 +19,12 @@
 (defn assert-check
   [{:keys [result result-data] :as m}]
   (if-let [error (:clojure.test.check.properties/error result-data)]
-    (throw error)
+    #?(:clje
+       (if-let [stack (:clojure.test.check.properties/stack result-data)]
+         (throw error stack)
+         (throw error))
+       :default
+       (throw error))
     (ct/is (clojure.test.check.clojure-test/check? m))))
 
 (def ^:dynamic *default-test-count* 100)

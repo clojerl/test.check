@@ -427,14 +427,14 @@
              gen/sorted-set
              (partial gen/vector-distinct-by pr-str)
              (partial gen/list-distinct-by pr-str)]]
-    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.Error :cljs js/Error) #"Couldn't generate enough distinct elements"
+    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.ExceptionInfo :cljs js/Error) #"Couldn't generate enough distinct elements"
                           (first (gen/sample
                                   (g gen/boolean {:min-elements 5})))))
-    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.Error :cljs js/Error) #"foo bar"
+    (is (thrown-with-msg? #?(:clj Exception :clje clojerl.ExceptionInfo :cljs js/Error) #"foo bar"
                           (first (gen/sample
                                   (g gen/boolean {:min-elements 5
                                                   :ex-fn (fn [arg] (ex-info "foo bar" arg))}))))))
-  (is (thrown? #?(:clj Exception :clje clojerl.Error :cljs js/Error)
+  (is (thrown? #?(:clj Exception :clje clojerl.ExceptionInfo :cljs js/Error)
                (first (gen/sample
                        (gen/map gen/boolean gen/nat {:min-elements 5}))))))
 
@@ -486,10 +486,10 @@
   (let [ex (try
              (gen/generate (gen/set gen/boolean {:num-elements 5}))
              (is false)
-             (catch #?(:clj Exception :clje clojerl.Error :cljs js/Error) e
+             (catch #?(:clj Exception :clje clojerl.ExceptionInfo :cljs js/Error) e
                e))]
     (is (re-find #"Couldn't generate enough distinct elements"
-                 #? (:clj (.getMessage ^Exception ex) :clje (.message ^clojerl.Error ex) :cljs (.-message ex))))
+                 #? (:clj (.getMessage ^Exception ex) :clje (.message ^clojerl.ExceptionInfo ex) :cljs (.-message ex))))
     (is (= 5 (-> ex ex-data :num-elements)))))
 
 ;; Generating proper matrices
@@ -544,7 +544,8 @@
 
 (defn get-tuple-gen
   [index]
-  (nth tuples (dec index)))
+  (nth #?(:clje (gen/resolve-gen tuples) :default tuples)
+       (dec index)))
 
 (defn inner-tuple-property
   [size]
@@ -718,7 +719,7 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest elements-with-empty
-  (is (thrown? #?(:clj AssertionError :clje clojerl.Error :cljs js/Error)
+  (is (thrown? #?(:clj AssertionError :clje clojerl.AssertionError :cljs js/Error)
                (gen/elements ()))))
 
 (defspec elements-with-a-set 100
