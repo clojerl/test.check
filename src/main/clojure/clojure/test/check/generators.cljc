@@ -719,8 +719,8 @@
   "Returns a rose tree."
   [empty-coll key-fn shuffle-fn gen rng size num-elements min-elements max-tries ex-fn]
   {:pre [gen (:gen gen)]}
-  (loop [rose-trees #?(:clje [] :default (persistent! []))
-         s #?(:clje #{} :default (persistent! #{}))
+  (loop [rose-trees #?(:clje [] :default (transient []))
+         s #?(:clje #{} :default (transient #{}))
          rng rng
          size size
          tries 0]
