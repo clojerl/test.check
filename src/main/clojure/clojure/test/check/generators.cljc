@@ -29,7 +29,12 @@
 (defn generator?
   "Test if `x` is a generator. Generators should be treated as opaque values."
   [x]
-  (or (instance? Generator x) (instance? clojerl.Var x)))
+  #?(:clje
+     (or (instance? Generator x)
+         (and (instance? clojerl.Var x)
+              (-> x meta :gen?)))
+     :default
+     (instance? Generator x)))
 
 (defn- make-gen
   [generator-fn]
