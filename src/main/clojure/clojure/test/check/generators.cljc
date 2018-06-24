@@ -1197,7 +1197,7 @@
       :clje
       (loop [out 0
              n n
-             out-shifter (math/pow 2 63)]
+             out-shifter (math/pow 2 52)]
         (if (< n 1)
           (* out out-shifter)
           (recur (-> out (* 2) (+ (bit-and n 1)))
@@ -1618,7 +1618,7 @@
      (no-shrink
       (make-gen
        (fn [rng _size]
-         (let [[r1 r2] (random/split rng)
+         (core/let [[r1 r2] (random/split rng)
                [r3 _] (random/split rng)
                x1 (random/rand-long r1)
                x2 (random/rand-long r2)
