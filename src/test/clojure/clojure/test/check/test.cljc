@@ -326,7 +326,8 @@
     ;; No ratio in cljs
     #?@(:clj [(testing "ratio"                (t gen/ratio   (some-fn ratio? integer?)))
               (testing "byte"                 (t gen/byte    #(instance? Byte %)))
-              (testing "bytes"                (t gen/bytes   #(instance? (Class/forName "[B") %)))]) (testing "char"                 (t gen/char                 is-char-fn))
+              (testing "bytes"                (t gen/bytes   #(instance? (Class/forName "[B") %)))])
+    (testing "char"                 (t gen/char                 is-char-fn))
     (testing "char-ascii"           (t gen/char-ascii           is-char-fn))
     (testing "char-alphanumeric"    (t gen/char-alphanumeric    is-char-fn))
     (testing "string"               (t gen/string               string?))
