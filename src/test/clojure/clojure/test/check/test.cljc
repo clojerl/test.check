@@ -1311,7 +1311,10 @@
                      (:result m))
           "legacy position for the error object")
       (is (false? (:pass? m)))
-      (is (= [::prop/error] (keys (:result-data m))))
+      #?(:clje
+         (is (= #{::prop/error ::prop/stack} (set (keys (:result-data m)))))
+         :default
+         (is (= [::prop/error] (keys (:result-data m)))))
       (let [[x] (:fail m)]
         (is (= {:x x} (-> m :result-data ::prop/error ex-data))))
       (is (= 70 (-> m :shrunk :result-data ::prop/error ex-data :x))))))
