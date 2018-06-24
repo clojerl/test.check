@@ -1117,11 +1117,11 @@
 ;; Some of the lower level stuff could probably be less messy and
 ;; faster, especially for CLJS.
 
-(def ^:private POS_INFINITY #?(:clj Double/POSITIVE_INFINITY, :clje nil, :cljs (.-POSITIVE_INFINITY js/Number)))
-(def ^:private NEG_INFINITY #?(:clj Double/NEGATIVE_INFINITY, :clje nil, :cljs (.-NEGATIVE_INFINITY js/Number)))
+(def ^:private POS_INFINITY #?(:clj Double/POSITIVE_INFINITY, :cljs (.-POSITIVE_INFINITY js/Number)))
+(def ^:private NEG_INFINITY #?(:clj Double/NEGATIVE_INFINITY, :cljs (.-NEGATIVE_INFINITY js/Number)))
 (def ^:private MAX_POS_VALUE #?(:clj Double/MAX_VALUE, :clje 1.797e308, :cljs (.-MAX_VALUE js/Number)))
 (def ^:private MIN_NEG_VALUE (- MAX_POS_VALUE))
-(def ^:private NAN #?(:clj Double/NaN :clje nil :cljs (.-NaN js/Number)))
+(def ^:private NAN #?(:clj Double/NaN :cljs (.-NaN js/Number)))
 
 (defn ^:private uniform-integer
   "Generates an integer uniformly in the range 0..(2^bit-count-1)."
@@ -1334,13 +1334,15 @@
                               [1 (return 0.0)]
                               [1 (return -0.0)])
 
-                             (and infinite? (nil? max))
-                             (conj [1 (return POS_INFINITY)])
+                             #?@(:clje []
+                                 :default
+                                 [(and infinite? (nil? max))
+                                  (conj [1 (return POS_INFINITY)])
 
-                             (and infinite? (nil? min))
-                             (conj [1 (return NEG_INFINITY)])
+                                  (and infinite? (nil? min))
+                                  (conj [1 (return NEG_INFINITY)])
 
-                             NaN? (conj [1 (return NAN)]))]
+                                  NaN? (conj [1 (return NAN)])]))]
     (if (= 1 (count frequency-arg))
       (-> frequency-arg first second)
       (frequency frequency-arg))))

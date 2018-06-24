@@ -895,9 +895,12 @@
 (defspec double-distribution-test 5
   (prop/for-all [xs (gen/no-shrink
                      (gen/vector (gen/resize 100 gen/double) 10000))]
-    (and (some #(= @#'gen/POS_INFINITY %) xs)
-         (some #(= @#'gen/NEG_INFINITY %) xs)
-         (some nan? xs)
+    (and
+     #?@(:clje []
+         :default
+         [(some #(= @#'gen/POS_INFINITY %) xs)
+          (some #(= @#'gen/NEG_INFINITY %) xs)
+          (some nan? xs)])
          (every? (fn [[lb ub]]
                    (some #(<= lb % ub) xs))
                  [[-1e303 -1e200]
