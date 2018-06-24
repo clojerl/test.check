@@ -1,0 +1,128 @@
+(ns clojure.test.check.random-test
+  "Testing that the cljs impl matches the clojure impl."
+  (:require [clojure.test :refer [deftest is]]
+            [clojure.test.check.random :as random]
+            [clojure.test.check.clojure-test :refer [defspec]]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]))
+
+(deftest longs-test
+
+  ;; comparing with this code run on clj-jvm:
+  (comment
+    (-> 42
+        (random/make-java-util-splittable-random)
+        (random/split-n 17)
+        (->> (mapcat random/split)
+             (map random/rand-long)
+             (reduce bit-xor))
+        (str))
+    =>
+    "5298131359241775269")
+
+  (is (= "5298131359241775269"
+         (-> 42
+             (random/make-java-util-splittable-random)
+             (random/split-n 17)
+             (->> (mapcat random/split)
+                  (map random/rand-long)
+                  (reduce #(bit-xor %1 %2)))
+             (str)))))
+
+(deftest doubles-test
+
+  ;; comparing with this code run on clj-jvm:
+  (comment
+
+    (-> -42
+        (random/make-java-util-splittable-random)
+        (random/split-n 17)
+        (->> (mapcat random/split)
+             (map random/rand-double)
+             (reduce +))
+        (str))
+    =>
+    "17.39141655134964")
+
+  (is (= "17.39141655134964"
+         (-> -42
+             (random/make-java-util-splittable-random)
+             (random/split-n 17)
+             (->> (mapcat random/split)
+                  (map random/rand-double)
+                  (reduce +))
+             (str)))))
+
+(deftest auto-seeding-test
+  (is (distinct? (random/rand-double (random/make-random))
+                 (random/rand-double (random/make-random))
+                 (random/rand-double (random/make-random))
+                 (random/rand-double (random/make-random)))
+      "Each call to make-random should return a different RNG."))
+
+;; Test from the JVM implementation
+
+(gen/defgen gen-split-steps
+  (gen/list (gen/elements [:left :right])))
+
+(defn apply-split-steps
+  [rng steps]
+  (reduce (fn [rng step]
+            (let [[rng1 rng2] (random/split rng)]
+              (case step :left rng1 :right rng2)))
+          rng
+          steps))
+
+(def ^:private MAX_VALUE (dec (apply * (repeat 63 2))))
+
+(gen/defgen gen-seed
+  (let [gen-int (gen/choose 0 MAX_VALUE)]
+    (gen/fmap (fn [[s1 s2]]
+                (bit-or s1 (bit-shift-left s2 32)))
+              (gen/tuple gen-int gen-int))))
+
+(defspec determinism-spec
+  (prop/for-all [seed gen-seed
+                 steps gen-split-steps]
+    (let [r1 (random/make-random seed)
+          r2 (random/make-random seed)]
+      (= (-> r1 (apply-split-steps steps) (random/rand-long))
+         (-> r2 (apply-split-steps steps) (random/rand-long))))))
+
+(defn get-256-longs
+  [rng]
+  (map random/rand-long
+       (nth (iterate #(mapcat random/split %) [rng]) 8)))
+
+;; this spec is only statistically certain to pass, not logically
+;; certain. The probability of a false failure (1/2^16384 or so) is
+;; low enough to ignore.
+#_(defspec different-states-spec
+  (prop/for-all [seed gen-seed
+                 pre-steps gen-split-steps
+                 post-steps-1 gen-split-steps
+                 post-steps-2 gen-split-steps]
+    (let [r (random/make-random seed)
+          r' (apply-split-steps r pre-steps)
+          [r1 r2] (random/split r')
+          r1' (apply-split-steps r1 post-steps-1)
+          r2' (apply-split-steps r2 post-steps-2)]
+      ;; r1' and r2' should not somehow be in the same state
+      (not= (get-256-longs r1')
+            (get-256-longs r2')))))
+
+(defspec split-n-spec 40
+  (prop/for-all [seed gen-seed
+                 n gen/nat]
+    (let [rng (random/make-random seed)]
+      ;; checking that split-n returns the same generators that we
+      ;; would get by doing a particular series of splits manually
+      (= (map random/rand-long (random/split-n rng n))
+         (map random/rand-long
+              (if (zero? n)
+                []
+                (loop [v [], rng rng]
+                  (if (= (dec n) (count v))
+                    (conj v rng)
+                    (let [[rng1 rng2] (random/split rng)]
+                      (recur (conj v rng2) rng1))))))))))
