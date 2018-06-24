@@ -1493,10 +1493,15 @@
 #?(:clje
    (defgen ^{:added "0.9.0"} uuid
      "Generates a random type-4 UUID. Does not shrink."
-     (no-shrink (make-gen
-                 (fn [rng _size]
-                   (rose/make-rose (erlang.util.UUID/random ) [])))))
-
+     (no-shrink
+      (make-gen
+       (fn [rng _size]
+         (let [[r1 r2] (random/split rng)
+               [r3 _] (random/split rng)
+               x1 (random/rand-long r1)
+               x2 (random/rand-long r2)
+               x3 (random/rand-long r3)]
+           (rose/make-rose (erlang.util.UUID/random x1 x2 x3) []))))))
    :default
    (def ^{:added "0.9.0"} uuid
      "Generates a random type-4 UUID. Does not shrink."

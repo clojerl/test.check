@@ -37,71 +37,69 @@
   Note: to maintain independence you should not call more than one
   function in the IRandom protocol with the same argument"))
 
-;; Immutable version of Java 8's java.util.SplittableRandom
 ;;
-;; Meant to give the same results as similar uses of
-;; java.util.SplittableRandom, in particular:
+;; This is a port of the clojure-jvm port of
+;; java.util.SplittableRandom, and should give identical results.
 ;;
-;; (= (-> (make-java-util-splittable-random 42)
-;;        (rand-long))
-;;    (.nextLong (SplittableRandom. 42)))
-;;
-;; (= (-> (make-java-util-splittable-random 42)
-;;        (split)
-;;        (first)
-;;        (rand-long))
-;;    (.nextLong (doto (SplittableRandom. 42)
-;;                     (.split))))
-;;
-;; (= (-> (make-java-util-splittable-random 42)
-;;        (split)
-;;        (second)
-;;        (rand-long))
-;;    (.nextLong (.split (SplittableRandom. 42))))
-;;
-;; Also see the spec that checks this equivalency.
+
+(def ^:private SIGN (apply * (repeat 63 2)))
+(def ^:private MASK (dec (apply * (repeat 64 2))))
 
 (def ^:private MAX_VALUE (dec (apply * (repeat 63 2))))
-(def ^:private MIN_VALUE (- MAX_VALUE))
+(def ^:private MIN_VALUE (dec (- MAX_VALUE)))
 
-;; backwards compatibility for clojure 1.5
-(def ^:private old-clojure?
-  (not (resolve 'clojure.core/unsigned-bit-shift-right)))
 (defmacro ^:private unsigned-bit-shift-right
   [x n]
   {:pre [(<= 1 n 63)]}
-  (if old-clojure?
-    (let [mask (-> MIN_VALUE
-                   (bit-shift-right (dec n))
-                   (bit-not))]
-      `(-> ~x
-           (bit-shift-right ~n)
-           (bit-and ~mask)))
-    `(clojure.core/unsigned-bit-shift-right ~x ~n)))
+  (let [mask (-> MIN_VALUE
+                 (bit-shift-right (dec n))
+                 (bit-not))]
+    `(-> ~x
+         (bit-shift-right ~n)
+         (bit-and ~mask))))
 
-;; (set! *unchecked-math* :warn-on-boxed)
+(defn ^:private check-sign [x num]
+  (if (zero? (bit-and SIGN x))
+    (-> x (bit-and MAX_VALUE))
+    (-> x (bit-or MIN_VALUE))))
+
+(defn ^:private longify*
+  "Macro for writing arbitrary longs in the java 0x syntax. E.g.
+  0x9e3779b97f4a7c15 (which is read as a bigint because it's out
+  of range) becomes -7046029254386353131."
+  [num]
+  (if (<= MIN_VALUE num MAX_VALUE)
+    num
+    (-> num (bit-and MASK) (check-sign num))))
+
+(defmacro ^:private longify
+  "Macro for writing arbitrary longs in the java 0x syntax. E.g.
+  0x9e3779b97f4a7c15 (which is read as a bigint because it's out
+  of range) becomes -7046029254386353131."
+  [num]
+  (longify* num))
 
 (defmacro ^:private bxoubsr
-  "Performs (-> x (unsigned-bit-shift-right n) (bit-xor x))."
+  "Performs (-> x (bit-shift-right n) (bit-xor x))."
   [x n]
-  (vary-meta
-   `(let [x# ~x]
-      (-> x# (unsigned-bit-shift-right ~n) (bit-xor x#)))
-   assoc :tag 'clojerl.Integer))
+  `(let [x# ~x]
+     (-> x# (unsigned-bit-shift-right ~n) (bit-xor x#) longify*)))
 
 (defmacro ^:private mix-64
   [n]
   `(-> ~n
        (bxoubsr 30)
-       (* 0xbf58476d1ce4e5b9)
+       (* (longify 0xbf58476d1ce4e5b9))
+       longify*
        (bxoubsr 27)
-       (* 0x94d049bb133111eb)
+       (* (longify 0x94d049bb133111eb))
+       longify*
        (bxoubsr 31)
-       (bit-and MAX_VALUE)))
+       longify*))
 
 (defn bit-count
   [x]
-  (loop [x x
+  (loop [x (bit-and MASK x)
          c 0]
     (if (zero? x)
       c
@@ -111,38 +109,37 @@
   [n]
   `(-> ~n
        (bxoubsr 33)
-       (* 0xff51afd7ed558ccd)
+       (* (longify 0xff51afd7ed558ccd))
+       longify*
        (bxoubsr 33)
-       (* 0xc4ceb9fe1a85ec53)
+       (* (longify 0xc4ceb9fe1a85ec53))
+       longify*
        (bxoubsr 33)
        (bit-or 1)
-       (bit-and MAX_VALUE)
        (as-> z#
              (cond-> z#
                (> 24 (-> z#
                          (bxoubsr 1)
                          (bit-count)))
-               (bit-xor 0xaaaaaaaaaaaaaaaa)))))
+               (bit-xor (longify 0xaaaaaaaaaaaaaaaa))))
+       longify*))
 
+;; This results in the same value as in the JVM
 (def ^:private ^:const double-unit (/ 1.0 (float (bit-set 0 53))))
-;; Java: 0x1.0p-53 or (1.0 / (1L << 53))
 
 (deftype SplittableRandom [gamma state]
   IRandom
   (rand-long [_]
-    (-> state (+ gamma) (mix-64)))
+    (-> state (+ gamma) longify* (mix-64)))
   (rand-double [this]
     (* double-unit (unsigned-bit-shift-right (int (rand-long this)) 11)))
   (split [this]
-    (let [state' (+ gamma state)
-          state'' (+ gamma state')
+    (let [state' (longify* (+ gamma state))
+          state'' (longify* (+ gamma state'))
           gamma' (mix-gamma state'')]
       [(SplittableRandom. gamma state'')
        (SplittableRandom. gamma' (mix-64 state'))]))
   (split-n [this n]
-    ;; immitates a particular series of 2-way splits, but avoids the
-    ;; intermediate allocation. See the `split-n-spec` for a test of
-    ;; the equivalence to 2-way splits.
     (let [n (int n)]
       (case n
         0 []
@@ -153,14 +150,16 @@
             (if (= n-dec (count ret))
               (-> ret
                   (conj (SplittableRandom. gamma state)))
-              (let [state' (+ gamma state)
-                    state'' (+ gamma state')
+              (let [state' (longify* (+ gamma state))
+                    state'' (longify* (+ gamma state'))
                     gamma' (mix-gamma state'')
                     new-rng (SplittableRandom. gamma' (mix-64 state'))]
-                (recur state'' (conj ret new-rng))))))))))
+                (recur state'' (conj ret new-rng)))))))))
+  clojerl.IStringable
+  (str [_] "#<SplittableRandom>"))
 
 (def ^:private golden-gamma
-  0x9e3779b97f4a7c15)
+  (longify 0x9e3779b97f4a7c15))
 
 (defn make-java-util-splittable-random
   ([]
