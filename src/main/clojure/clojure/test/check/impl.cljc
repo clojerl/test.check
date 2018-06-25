@@ -11,5 +11,6 @@
 
 (defn get-current-time-millis []
   #?(:clj  (System/currentTimeMillis)
-     :clje (erlang/monotonic_time :milli_seconds)
+     :clje (+ (erlang/time_offset :milli_seconds)
+              (erlang/monotonic_time :milli_seconds))
      :cljs (.valueOf (js/Date.))))
