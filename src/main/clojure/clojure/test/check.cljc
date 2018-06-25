@@ -256,7 +256,8 @@
   Calls reporter-fn on every shrink step."
   [rose-tree reporter-fn]
   (let [start-time (get-current-time-millis)
-        shrinks-this-depth (rose/children rose-tree)]
+        shrinks-this-depth #?(:clje (seq (rose/children rose-tree))
+                              :default (rose/children rose-tree))]
     (loop [nodes shrinks-this-depth
            current-smallest (rose/root rose-tree)
            total-nodes-visited 0
@@ -282,7 +283,7 @@
             ;; this node passed the test, so now try testing its right-siblings
             (do
               (reporter-fn reporter-fn-arg)
-              (recur tail current-smallest (inc total-nodes-visited) depth))
+              (recur #?(:clje (seq tail) :default tail) current-smallest (inc total-nodes-visited) depth))
             ;; this node failed the test, so check if it has children,
             ;; if so, traverse down them. If not, save this as the best example
             ;; seen now and then look at the right-siblings
@@ -293,7 +294,7 @@
                                      (:args new-smallest)))
               (if-let [children (seq (rose/children head))]
                 (recur children new-smallest (inc total-nodes-visited) (inc depth))
-                (recur tail new-smallest (inc total-nodes-visited) depth)))))))))
+                (recur #?(:clje (seq tail) :default tail) new-smallest (inc total-nodes-visited) depth)))))))))
 
 (defn- failure
   [property failing-rose-tree trial-number size seed start-time reporter-fn]
