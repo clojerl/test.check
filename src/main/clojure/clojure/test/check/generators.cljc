@@ -361,7 +361,7 @@
           "Arg to one-of must be a collection of generators")
   (assert (seq generators)
           "one-of cannot be called with an empty collection")
-  (core/let #?(:clje [generators (mapv resolve-gen generators)]
+  (core/let #?(:clje [generators (core/map resolve-gen generators)]
                :default [])
     (bind (choose 0 (dec (count generators)))
           #(nth generators %))))
@@ -391,8 +391,8 @@
                   pairs)
           "Arg to frequency must be a list of [num generator] pairs")
   (core/let [pairs (filter (comp pos? first) pairs)
-             total (apply + (core/map first pairs))
-             #?@(:clje [pairs (core/map (fn [[x g]] [x (resolve-gen g)]) pairs)])]
+             #?@(:clje [pairs (core/map (fn [[x g]] [x (resolve-gen g)]) pairs)])
+             total (apply + (core/map first pairs))]
     (assert (seq pairs)
             "frequency must be called with at least one non-zero weight")
     ;; low-level impl for shrinking control
@@ -1303,7 +1303,16 @@
     (cond->> gen pred (such-that pred))))
 
 (defn double*
-  "Generates a 64-bit floating point number. Options:
+  #?(:clje
+     "Generates a 64-bit floating point number. Options:
+
+    :min       - minimum value (inclusive, default none)
+    :max       - maximum value (inclusive, default none)
+
+  Note that the min/max options must be finite numbers. Supplying a
+  min precludes -Infinity, and supplying a max precludes +Infinity."
+     :default
+     "Generates a 64-bit floating point number. Options:
 
     :infinite? - whether +/- infinity can be generated (default true)
     :NaN?      - whether NaN can be generated (default true)
@@ -1311,11 +1320,12 @@
     :max       - maximum value (inclusive, default none)
 
   Note that the min/max options must be finite numbers. Supplying a
-  min precludes -Infinity, and supplying a max precludes +Infinity."
+  min precludes -Infinity, and supplying a max precludes +Infinity.")
   {:added "0.9.0"}
-  [{:keys [infinite? NaN? min max]
-    ;; TODO [clje]: maybe it would be a good idea to make the defaults false here
-    :or {infinite? true, NaN? true}}]
+  [#?(:clje {:keys [min max]}
+      :default
+      {:keys [infinite? NaN? min max]
+       :or {infinite? true, NaN? true}})]
   (core/let [frequency-arg (cond-> [[95 (double-finite min max)]]
 
                              (if (nil? min)
