@@ -568,10 +568,10 @@
   [& generators]
   (assert (every? generator? generators)
           "Args to tuple must be generators")
-  (core/let [#?@(:clje [generators (core/map resolve-gen generators)])]
-    (gen-fmap (fn [roses]
-                (rose/zip core/vector roses))
-              (gen-tuple generators))))
+  (gen-fmap (fn [roses]
+              (rose/zip core/vector roses))
+            (gen-tuple #?(:clje (core/map resolve-gen generators)
+                          :default generators))))
 
 (#?(:clje defgen :default def) int
   "Generates a positive or negative integer bounded by the generator's
