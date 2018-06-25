@@ -257,8 +257,7 @@
      ;; TODO: check if this is actually the way to do this since the BEAM has
      ;; arbitrary precision integers.
      :clje
-     (clj_utils/floor (+ lower (- (* factor (+ 1.0 upper))
-                                  (* factor lower))))
+     (erlang/round (+ lower (* factor (- upper lower))))
      :cljs
      (long (Math/floor (+ lower (- (* factor (+ 1.0 upper))
                                    (* factor lower)))))))
