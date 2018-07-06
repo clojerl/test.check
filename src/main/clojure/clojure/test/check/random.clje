@@ -97,13 +97,17 @@
        (bxoubsr 31)
        longify*))
 
-(defn bit-count
-  [x]
-  (loop [x (bit-and MASK x)
-         c 0]
-    (if (zero? x)
-      c
-      (recur (bit-shift-right x 1) (+ c (bit-and x 1))))))
+(defn* bit-count
+  ([0] 0)
+  ([x]
+   (let [x (- x (-> x (bit-shift-right 1) (bit-and 0x5555555555555555)))
+         x (-> x (bit-and 0x3333333333333333)
+               (+ (-> x (bit-shift-right 2) (bit-and 0x3333333333333333))))
+         x (-> x (bit-shift-right 4) (+ x) (bit-and 0x0f0f0f0f0f0f0f0f))
+         x (-> x (bit-shift-right 8) (+ x))
+         x (-> x (bit-shift-right 16) (+ x))
+         x (-> x (bit-shift-right 32) (+ x))]
+     (bit-and x 0x7F))))
 
 (defmacro ^:private mix-gamma
   [n]
