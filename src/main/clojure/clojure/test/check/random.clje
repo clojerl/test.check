@@ -48,10 +48,15 @@
 (def ^:private MAX_VALUE (dec (apply * (repeat 63 2))))
 (def ^:private MIN_VALUE (dec (- MAX_VALUE)))
 
+(defmacro sign [] SIGN)
+(defmacro mask [] MASK)
+(defmacro min-value [] MIN_VALUE)
+(defmacro max-value [] MAX_VALUE)
+
 (defmacro ^:private unsigned-bit-shift-right
   [x n]
   {:pre [(<= 1 n 63)]}
-  (let [mask (-> MIN_VALUE
+  (let [mask (-> (min-value)
                  (bit-shift-right (dec n))
                  (bit-not))]
     `(-> ~x
@@ -59,18 +64,18 @@
          (bit-and ~mask))))
 
 (defn ^:private check-sign [x num]
-  (if (zero? (bit-and SIGN x))
-    (-> x (bit-and MAX_VALUE))
-    (-> x (bit-or MIN_VALUE))))
+  (if (zero? (bit-and (sign) x))
+    (-> x (bit-and (max-value)))
+    (-> x (bit-or (min-value)))))
 
 (defn ^:private longify*
   "Macro for writing arbitrary longs in the java 0x syntax. E.g.
   0x9e3779b97f4a7c15 (which is read as a bigint because it's out
   of range) becomes -7046029254386353131."
   [num]
-  (if (<= MIN_VALUE num MAX_VALUE)
+  (if (and (<= (min-value) num) (<= num (max-value)))
     num
-    (-> num (bit-and MASK) (check-sign num))))
+    (-> num (bit-and (mask)) (check-sign num))))
 
 (defmacro ^:private longify
   "Macro for writing arbitrary longs in the java 0x syntax. E.g.
