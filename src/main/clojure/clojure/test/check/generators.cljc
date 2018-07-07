@@ -41,11 +41,18 @@
   [generator-fn]
   (Generator. generator-fn))
 
-(defn call-gen
-  "Internal function."
-  {:no-doc true}
-  [{generator-fn :gen} rnd size]
-  (generator-fn rnd size))
+#?(:clje
+   (defn call-gen
+     "Internal function."
+     {:no-doc true}
+     [^Generator gen rnd size]
+     ((.-gen gen) rnd size))
+   :default
+   (defn call-gen
+     "Internal function."
+     {:no-doc true}
+     [{generator-fn :gen} rnd size]
+     (generator-fn rnd size)))
 
 (defn gen-pure
   "Internal function."
@@ -55,24 +62,45 @@
    (fn [rnd size]
      value)))
 
-(defn gen-fmap
-  "Internal function."
-  {:no-doc true}
-  [k {h :gen}]
-  (make-gen
-   (fn [rnd size]
-     (k (h rnd size)))))
+#?(:clje
+   (defn gen-fmap
+     "Internal function."
+     {:no-doc true}
+     [k ^Generator gen]
+     (make-gen
+      (fn [rnd size]
+        (k ((.-gen gen) rnd size)))))
+   :default
+   (defn gen-fmap
+     "Internal function."
+     {:no-doc true}
+     [k {h :gen}]
+     (make-gen
+      (fn [rnd size]
+        (k (h rnd size))))))
 
-(defn gen-bind
-  "Internal function."
-  {:no-doc true}
-  [{h :gen} k]
-  (make-gen
-   (fn [rnd size]
-     (core/let [[r1 r2] (random/split rnd)
-                inner (h r1 size)
-                {result :gen} (k inner)]
-       (result r2 size)))))
+#?(:clje
+   (defn gen-bind
+     "Internal function."
+     {:no-doc true}
+     [^Generator gen k]
+     (make-gen
+      (fn [rnd size]
+        (core/let [[r1 r2] (random/split rnd)
+                   inner ((.-gen gen) r1 size)
+                   gen (k inner)]
+          ((.-gen gen) r2 size)))))
+   :default
+   (defn gen-bind
+     "Internal function."
+     {:no-doc true}
+     [{h :gen} k]
+     (make-gen
+      (fn [rnd size]
+        (core/let [[r1 r2] (random/split rnd)
+                   inner (h r1 size)
+                   {result :gen} (k inner)]
+          (result r2 size))))))
 
 (defn lazy-random-states
   "Internal function.
