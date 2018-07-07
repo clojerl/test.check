@@ -149,21 +149,21 @@
       [(SplittableRandom. gamma state'')
        (SplittableRandom. gamma' (mix-64 state'))]))
   (split-n [this n]
-    (let [n (int n)]
-      (case n
-        0 []
-        1 [this]
-        (let [n-dec (dec n)]
-          (loop [state state
-                 ret []]
-            (if (= n-dec (count ret))
-              (-> ret
-                  (conj (SplittableRandom. gamma state)))
-              (let [state' (longify* (+ gamma state))
-                    state'' (longify* (+ gamma state'))
-                    gamma' (mix-gamma state'')
-                    new-rng (SplittableRandom. gamma' (mix-64 state'))]
-                (recur state'' (conj ret new-rng)))))))))
+    (case n
+      0 []
+      1 [this]
+      (let [n-dec (dec n)]
+        (loop [state state
+               ret []
+               n-dec n-dec]
+          (if (zero? n-dec)
+            (-> ret
+                (conj (SplittableRandom. gamma state)))
+            (let [state' (longify* (+ gamma state))
+                  state'' (longify* (+ gamma state'))
+                  gamma' (mix-gamma state'')
+                  new-rng (SplittableRandom. gamma' (mix-64 state'))]
+              (recur state'' (conj ret new-rng) (dec n-dec))))))))
   clojerl.IStringable
   (str [_] "#<SplittableRandom>"))
 
