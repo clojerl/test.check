@@ -1373,8 +1373,7 @@
     :min       - minimum value (inclusive, default none)
     :max       - maximum value (inclusive, default none)
 
-  Note that the min/max options must be finite numbers. Supplying a
-  min precludes -Infinity, and supplying a max precludes +Infinity."
+  Note that the min/max options must be finite numbers."
      :default
      "Generates a 64-bit floating point number. Options:
 
