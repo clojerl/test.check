@@ -916,8 +916,10 @@
                   [1e100 1e200]
                   [1e200 1e303]])
          (let [mods (->> xs
-                         (remove infinite?)
-                         (remove nan?)
+                         #?@(:clje []
+                             :default
+                             [(remove infinite?)
+                              (remove nan?)])
                          (map #(mod % 1.0)))]
            (every? (fn [[lb ub]]
                      (some #(<= lb % ub) mods))

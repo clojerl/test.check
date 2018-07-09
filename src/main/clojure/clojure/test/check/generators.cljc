@@ -407,7 +407,7 @@
           "Arg to one-of must be a collection of generators")
   (assert (seq generators)
           "one-of cannot be called with an empty collection")
-  (core/let #?(:clje [generators (core/map resolve-gen generators)]
+  (core/let #?(:clje [generators (core/mapv resolve-gen generators)]
                :default [])
     (bind (choose 0 (dec (count generators)))
           #(nth generators %))))
@@ -436,8 +436,8 @@
   (assert (every? (fn [[x g]] (and (number? x) (generator? g)))
                   pairs)
           "Arg to frequency must be a list of [num generator] pairs")
-  (core/let [pairs (filter (comp pos? first) pairs)
-             #?@(:clje [pairs (core/map (fn [[x g]] [x (resolve-gen g)]) pairs)])
+  (core/let [pairs (filter #?(:clje #(-> % first pos?) :default (comp pos? first)) pairs)
+             #?@(:clje [pairs (core/mapv (fn [[x g]] [x (resolve-gen g)]) pairs)])
              total (apply + (core/map first pairs))]
     (assert (seq pairs)
             "frequency must be called with at least one non-zero weight")
@@ -537,15 +537,12 @@
                          :else
                          (throw (ex-info "Bad argument to such-that!" {:max-tries-or-opts
                                                                        max-tries-or-opts})))
-              opts (merge default-such-that-opts opts)]
+              opts (merge default-such-that-opts opts)
+              #?@(:clje [gen (resolve-gen gen)])]
      (assert (generator? gen) "Second arg to such-that must be a generator")
      (make-gen
       (fn [rand-seed size]
-        (such-that-helper pred
-                          #?(:clje (resolve-gen gen) :default gen)
-                          opts
-                          rand-seed
-                          size))))))
+        (such-that-helper pred gen opts rand-seed size))))))
 
 (defn not-empty
   "Modifies a generator so that it doesn't generate empty collections.
@@ -616,7 +613,7 @@
           "Args to tuple must be generators")
   (gen-fmap (fn [roses]
               (rose/zip core/vector roses))
-            (gen-tuple #?(:clje (core/map resolve-gen generators)
+            (gen-tuple #?(:clje (core/mapv resolve-gen generators)
                           :default generators))))
 
 (#?(:clje defgen :default def) nat
@@ -766,7 +763,7 @@
   (assert (even? (count kvs)))
   (core/let [ks (take-nth 2 kvs)
              vs (take-nth 2 (rest kvs))
-             #?@(:clje [vs (core/map resolve-gen vs)])]
+             #?@(:clje [vs (core/mapv resolve-gen vs)])]
     (assert (every? generator? vs)
             "Value args to hash-map must be generators")
     (fmap #(zipmap ks %)
@@ -1389,7 +1386,8 @@
   Note that the min/max options must be finite numbers. Supplying a
   min precludes -Infinity, and supplying a max precludes +Infinity.")
   {:added "0.9.0"}
-  [#?(:clje {:keys [min max]}
+  [#?(:clje
+      {:keys [min max]}
       :default
       {:keys [infinite? NaN? min max]
        :or {infinite? true, NaN? true}})]
