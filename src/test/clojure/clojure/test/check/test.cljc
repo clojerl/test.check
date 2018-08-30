@@ -26,7 +26,7 @@
             #?(:clj [clojure.test.check.test-specs :as specs])
             #?(:cljs [clojure.test.check.random.longs :as rl])
             #?(:clj  [clojure.edn :as edn]
-               ;; :clje [clojure.edn :as edn]
+               :clje [clojure.edn :as edn]
                :cljs [cljs.reader :as edn :refer [read-string]])))
 
 (#?(:clje gen/defgen :default def) gen-seed
@@ -675,7 +675,8 @@
 
 (#?(:clje gen/defgen :default def) simple-type
   "Like gen/simple-type but excludes Infinity and NaN."
-  (gen/one-of [gen/int gen/large-integer (gen/double* {:infinite? false, :NaN? false}) gen/char gen/string
+  (gen/one-of [gen/int gen/large-integer (gen/double* {:infinite? false, :NaN? false})
+               #?(:clje gen/char-ascii :default gen/char) #?(:clje gen/string-ascii :default gen/string)
                gen/ratio gen/boolean gen/keyword gen/keyword-ns gen/symbol gen/symbol-ns gen/uuid]))
 
 (#?(:clje gen/defgen :default def) any-edn (gen/recursive-gen gen/container-type simple-type))
