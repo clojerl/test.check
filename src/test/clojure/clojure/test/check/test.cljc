@@ -26,7 +26,7 @@
             #?(:clj [clojure.test.check.test-specs :as specs])
             #?(:cljs [clojure.test.check.random.longs :as rl])
             #?(:clj  [clojure.edn :as edn]
-               ;; :clje [clojure.edn :as edn]
+               :clje [clojure.edn :as edn]
                :cljs [cljs.reader :as edn :refer [read-string]])))
 
 (#?(:clje gen/defgen :default def) gen-seed
