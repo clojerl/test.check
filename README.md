@@ -1,5 +1,7 @@
 # test.check
 
+[![Travis](https://travis-ci.org/clojerl/test.check.svg?branch=clojerl)](https://travis-ci.org/clojerl/test.check)
+
 _test.check_ is a Clojure property-based testing tool inspired by QuickCheck.
 The core idea of _test.check_ is that instead of enumerating expected input
 and output for unit tests, you write properties about your function that should
