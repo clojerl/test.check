@@ -189,11 +189,9 @@
   (if-not #?(:clje true :default (instance? #?(:clj clojure.lang.MultiFn :cljs MultiFn) ct/report))
     (binding [*out* #?(:clj *err* :clje *err* :cljs *out*)]
       (println "clojure.test/report is not a multimethod, some reporting functions have been disabled."))
-    (let #?(:clje []
-            :default [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
-                                                                     :cljs [::ct/default :begin-test-var]))])
-
-      #?(:clje (def begin-test-var-method (get-method ct/report :begin-test-var)))
+    (let [begin-test-var-method (get-method ct/report #?(:clj  :begin-test-var
+                                                         :clje :begin-test-var
+                                                         :cljs [::ct/default :begin-test-var]))]
 
       (defmethod ct/report #?(:clj  :begin-test-var
                               :clje :begin-test-var
