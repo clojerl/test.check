@@ -368,7 +368,7 @@
          (gen/sample (gen/choose 200 800))
          => (331 241 593 339 643 718 688 473 247 694)"
      :clje
-     "Create a generator that returns integer numbers in the range
+     "Creates a generator that generates integers uniformly in the range
      `lower` to `upper`, inclusive.
 
          (gen/sample (gen/choose 200 800))
@@ -1516,9 +1516,9 @@
 (#?(:clje defgen :default def) char-alphanumeric
   "Generates alphanumeric characters."
   (fmap core/char
-           (one-of [(choose 48 57)
-                    (choose 65 90)
-                    (choose 97 122)])))
+        (one-of [(choose 48 57)
+                 (choose 65 90)
+                 (choose 97 122)])))
 
 (def ^{:deprecated "0.6.0"}
   char-alpha-numeric
@@ -1530,8 +1530,8 @@
 (#?(:clje defgen :default def) char-alpha
   "Generates alpha characters."
   (fmap core/char
-           (one-of [(choose 65 90)
-                    (choose 97 122)])))
+        (one-of [(choose 65 90)
+                 (choose 97 122)])))
 
 (#?(:clje defgen :default def) ^:private char-symbol-special
   "Generates non-alphanumeric characters that can be in a symbol."
