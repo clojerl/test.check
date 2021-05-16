@@ -678,13 +678,17 @@
   [value]
   (= value (-> value prn-str edn/read-string)))
 
-(def infinities #{1E1000 -1E1000})
+(def infinities #?(:clje #{1E308 -1E308}
+                   ;; The 1E1000 literal can not be parsed by Clojerl
+                   ;; :default #{1E1000 -1E1000}
+                   ))
 
 (def infinity-syntax?
   (edn-roundtrip? (first infinities)))
 
 (defspec edn-roundtrips 200
-  (prop/for-all [a gen/any-equatable]
+  (prop/for-all [a #?(:clje gen/any-printable-equatable
+                      :default gen/any-equatable)]
     (or (edn-roundtrip? a)
         ;; this keeps the tests passing for clojure 1.8 and older
         (and (not infinity-syntax?)

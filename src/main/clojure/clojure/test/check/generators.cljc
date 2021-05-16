@@ -1695,7 +1695,7 @@
                                      (hex 27) (hex 28) (hex 29) (hex 30))))))
                (vector (choose 0 15) 31))))))
 
-(#?(:clje defgen :default def) ^:private base-simple-type
+(defn ^:private base-simple-type
   [double-gen char-gen string-gen]
   (one-of [int #?(:clj size-bounded-bigint :cljs large-integer) double-gen char-gen
            string-gen ratio boolean keyword keyword-ns symbol symbol-ns uuid]))
@@ -1852,12 +1852,12 @@
   like 7 and 14 (bell and alternate character set command)"
   (recursive-gen container-type simple-type-printable))
 
-(def ^{:added "0.10.0"} any-equatable
+(#?(:clje defgen :default def) ^{:added "0.10.0"} any-equatable
   "Like any, but only generates objects that can be equal to other objects (e.g., do
   not contain a NaN)"
   (recursive-gen container-type simple-type-equatable))
 
-(def ^{:added "0.10.0"} any-printable-equatable
+(#?(:clje defgen :default def) ^{:added "0.10.0"} any-printable-equatable
   "Like any, but avoids characters that the shell will interpret as actions,
   like 7 and 14 (bell and alternate character set command), and only generates
   objects that can be equal to other objects (e.g., do not contain a NaN)"

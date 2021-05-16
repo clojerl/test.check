@@ -9,7 +9,8 @@
 
 (ns clojure.test.check.properties
   (:require [clojure.test.check.generators :as gen]
-            [clojure.test.check.results :as results])
+            [clojure.test.check.results :as results]
+            #?(:clje [clojure.stacktrace :as stack]))
   #?(:cljs (:require-macros [clojure.test.check.properties :refer [for-all]])))
 
 (defrecord ErrorResult [error]
@@ -19,7 +20,7 @@
     ;; spelling out the whole keyword here since `::error` is
     ;; different in self-hosted cljs.
     {:clojure.test.check.properties/error error
-     #?@(:clje [:clojure.test.check.properties/stack (erlang/get_stacktrace)])}))
+     #?@(:clje [:clojure.test.check.properties/stack (stack/get-stacktrace)])}))
 
 (defn ^:private exception?
   [x]
