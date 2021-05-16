@@ -1540,13 +1540,13 @@
 (#?(:clje defgen :default def) ^:private char-symbol-noninitial
   "Generates characters that can be the char following first of a keyword or symbol."
   (frequency [[14 char-alphanumeric]
-              [7 char-symbol-special]
-              [1 (return \:)]]))
+                [7 char-symbol-special]
+                [1 (return \:)]]))
 
 (#?(:clje defgen :default def) ^:private char-symbol-initial
   "Generates characters that can be the first char of a keyword or symbol."
   (frequency [[2 char-alpha]
-              [1 char-symbol-special]]))
+                [1 char-symbol-special]]))
 
 (#?(:clje defgen :default def) string
   "Generates strings. May generate unprintable characters."
@@ -1620,8 +1620,8 @@
   "Generates symbols without namespaces."
   (frequency [[100
                (->> symbol-name-or-namespace
-                    (fmap core/symbol)
-                    (resize-symbolish-generator))]
+                      (fmap core/symbol)
+                      (resize-symbolish-generator))]
               [1 (return '/)]]))
 
 (#?(:clje defgen :default def)
