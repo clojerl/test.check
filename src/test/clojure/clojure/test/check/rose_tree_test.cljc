@@ -9,7 +9,7 @@
 
 (ns clojure.test.check.rose-tree-test
   (:require [clojure.test.check.generators :as gen]
-            [clojure.test.check.properties :as prop #?@(:cljs [:include-macros true])]
+            [clojure.test.check.properties :as prop]
             [clojure.test.check.rose-tree :as rose]
             [clojure.test.check.clojure-test :as ct #?@(:clj  [:refer (defspec)]
                                                         :clje [:refer (defspec)]
@@ -29,7 +29,7 @@
 
 (defspec test-collapse-rose
   100
-  (prop/for-all [i gen/int]
+  (prop/for-all [i gen/small-integer]
     (let [tree (#'gen/int-rose-tree i)]
       (= (depth-one-and-two-children tree)
          (depth-one-children (rose/collapse tree))))))

@@ -230,8 +230,9 @@ Besides the confusing names, the big gotcha is that the range of these
 generators is is more or less strictly bounded by `size`, and so any
 use of them will by default not test numbers bigger than `200`, which
 is unacceptable coverage for a lot of
-applications. `gen/large-integer` should avoid this issue. The
-small-integer generators can still be useful for certain uses.
+applications. `gen/large-integer` should avoid this issue. Most of the
+small integer generators have been deprecated, with the exception of
+`gen/nat` and the new-and-less-confusingly-named `gen/small-integer`.
 
 #### Small Test Count
 
@@ -262,7 +263,7 @@ the distribution of a generator.
 
 #### Collection composition
 
-_See [TCHECK-106](http://dev.clojure.org/jira/browse/TCHECK-106)_
+_See [TCHECK-106](https://clojure.atlassian.net/browse/TCHECK-106)_
 
 test.check's collection generators by default select a size for the
 generated collection that is proportional to the `size` parameter.

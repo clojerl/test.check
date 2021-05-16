@@ -14,6 +14,8 @@ pom.xml.asc
 /.classpath
 /.project
 /.settings/
+.idea/
+*.iml
 /_build/
 /_checkouts/
 rebar.lock

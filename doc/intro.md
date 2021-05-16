@@ -21,7 +21,7 @@ the count of the input is preserved. Our test might look like:
          '[clojure.test.check.properties :as prop #?@(:cljs [:include-macros true])])
 
 (def property
-  (prop/for-all [v (gen/vector gen/int)]
+  (prop/for-all [v (gen/vector gen/small-integer)]
     (let [s (sort v)]
       (and (= (count v) (count s))
            (or (empty? s)
@@ -43,7 +43,7 @@ to fail. For example, the function might originally fail with input:
 
 ```clojure
 (def bad-property
-  (prop/for-all [v (gen/vector gen/int)]
+  (prop/for-all [v (gen/vector gen/small-integer)]
     (or (empty? v) (apply <= v))))
 
 (tc/quick-check 100 bad-property)
@@ -80,14 +80,14 @@ generators, we can see them in practice with the `sample` function:
 ```clojure
 (require '[clojure.test.check.generators :as gen])
 
-(gen/sample gen/int)
+(gen/sample gen/small-integer)
 ;; => (0 1 -1 0 -1 4 4 2 7 1)
 ```
 
 we can ask for more samples:
 
 ```clojure
-(gen/sample gen/int 20)
+(gen/sample gen/small-integer 20)
 ;; => (0 1 1 0 2 -4 0 5 -7 -8 4 5 3 11 -9 -4 6 -5 -3 0)
 ```
 
@@ -95,7 +95,7 @@ or get a lazy-seq of values:
 
 
 ```clojure
-(take 1 (gen/sample-seq gen/int))
+(take 1 (gen/sample-seq gen/small-integer))
 ;; => (0)
 ```
 
@@ -258,7 +258,7 @@ generator will be `gen/vector` and our scalar will be `gen/boolean`:
 ```
 
 Now, let's make our own, JSON-like generator. We'll allow `gen/list` and
-`gen/map` as our compound types and `gen/int` and `gen/boolean` as our scalar
+`gen/map` as our compound types and `gen/small-integer` and `gen/boolean` as our scalar
 types. Since `recursive-gen` only accepts one of each type of generator, we'll
 combine our compound types with a simple function, and the two scalars with
 `gen/one-of`.
@@ -267,18 +267,134 @@ combine our compound types with a simple function, and the two scalars with
 (def compound (fn [inner-gen]
                   (gen/one-of [(gen/list inner-gen)
                                (gen/map inner-gen inner-gen)])))
-(def scalars (gen/one-of [gen/int gen/boolean]))
+(def scalars (gen/one-of [gen/small-integer gen/boolean]))
 (def my-json-like-thing (gen/recursive-gen compound scalars))
 (last (gen/sample my-json-like-thing 20))
 ;; =>
 ;; (()
-;;  {{4 -11, 1 -19} (false),
-;;  {} {1 6},
-;;  (false false) {true -3, false false, -7 1}})
+;;  {(false false)  {true -3, false false, -7 1},
+;;   {4 -11, 1 -19} (false),
+;;   {}             {1 6}})
 ```
 
 And we see we got a list whose first element is the empty list. The second
 element is a map with int keys and values. Etc.
+
+## More Examples
+
+Let's say we're testing a sort function. We want to check that that our sort
+function is idempotent, that is, applying sort twice should be equivalent to
+applying it once: `(= (sort a) (sort (sort a)))`. Let's write a quick test to
+make sure this is the case:
+
+```clojure
+(require '[clojure.test.check :as tc])
+(require '[clojure.test.check.generators :as gen])
+(require '[clojure.test.check.properties :as prop #?@(:cljs [:include-macros true])])
+
+(def sort-idempotent-prop
+  (prop/for-all [v (gen/vector gen/small-integer)]
+    (= (sort v) (sort (sort v)))))
+
+(tc/quick-check 100 sort-idempotent-prop)
+;; => {:result true,
+;; =>  :pass? true,
+;; =>  :num-tests 100,
+;; =>  :time-elapsed-ms 28,
+;; =>  :seed 1528580707376}
+```
+
+In prose, this test reads: for all vectors of integers, `v`, sorting `v` is
+equal to sorting `v` twice.
+
+What happens if our test fails? _test.check_ will try and find 'smaller'
+inputs that still fail. This process is called shrinking. Let's see it in
+action:
+
+```clojure
+(def prop-sorted-first-less-than-last
+  (prop/for-all [v (gen/not-empty (gen/vector gen/small-integer))]
+    (let [s (sort v)]
+      (< (first s) (last s)))))
+
+(tc/quick-check 100 prop-sorted-first-less-than-last)
+;; => {:num-tests 5,
+;; =>  :seed 1528580863556,
+;; =>  :fail [[-3]],
+;; =>  :failed-after-ms 1,
+;; =>  :result false,
+;; =>  :result-data nil,
+;; =>  :failing-size 4,
+;; =>  :pass? false,
+;; =>  :shrunk
+;; =>  {:total-nodes-visited 5,
+;; =>   :depth 2,
+;; =>   :pass? false,
+;; =>   :result false,
+;; =>   :result-data nil,
+;; =>   :time-shrinking-ms 1,
+;; =>   :smallest [[0]]}}
+```
+
+This test claims that the first element of a sorted vector should be less-than
+the last. Of course, this isn't true: the test fails with input `[-3]`, which
+gets shrunk down to `[0]`, as seen in the output above. As your test functions
+require more sophisticated input, shrinking becomes critical to being able
+to understand exactly why a random test failed. To see how powerful shrinking
+is, let's come up with a contrived example: a function that fails if it's
+passed a sequence that contains the number 42:
+
+```clojure
+(def prop-no-42
+  (prop/for-all [v (gen/vector gen/small-integer)]
+    (not (some #{42} v))))
+
+(tc/quick-check 100 prop-no-42)
+;; => {:num-tests 45,
+;; =>  :seed 1528580964834,
+;; =>  :fail
+;; =>  [[-35 -9 -31 12 -30 -40 36 36 25 -2 -31 42 8 31 17 -19 3 -15 44 -1 -8 27 16]],
+;; =>  :failed-after-ms 11,
+;; =>  :result false,
+;; =>  :result-data nil,
+;; =>  :failing-size 44,
+;; =>  :pass? false,
+;; =>  :shrunk
+;; =>  {:total-nodes-visited 16,
+;; =>   :depth 5,
+;; =>   :pass? false,
+;; =>   :result false,
+;; =>   :result-data nil,
+;; =>   :time-shrinking-ms 1,
+;; =>   :smallest [[42]]}}
+```
+
+We see that the test failed on a rather large vector, as seen in the `:fail`
+key. But then _test.check_ was able to shrink the input down to `[42]`, as
+seen in the keys `[:shrunk :smallest]`.
+
+To learn more, check out the [documentation](#documentation) links.
+
+### `clojure.test` Integration
+
+The macro `clojure.test.check.clojure-test/defspec` allows you to succinctly
+write properties that run under the `clojure.test` runner, for example:
+
+```clojure
+(defspec first-element-is-min-after-sorting ;; the name of the test
+  100 ;; the number of iterations for test.check to test
+  (prop/for-all [v (gen/not-empty (gen/vector gen/small-integer))]
+    (= (apply min v)
+       (first (sort v)))))
+```
+
+### ClojureScript
+
+ClojureScript support was added in version `0.7.0`.
+
+Integrating with `cljs.test` is via the
+`clojure.test.check.clojure-test/defspec` macro, in the same fashion
+as integration with `clojure.test` on the jvm.
 
 ---
 

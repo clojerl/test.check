@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0 (2020-07-10)
+
+* TCHECK-155 - don't generate :/ for keywords
+
+## 1.0.0 (2020-02-18)
+
+* No changes
+
+## 0.10.0 (2019-06-30 as RC1, 2019-08-11 as final)
+
+* Docstring improvements
+* Deprecated five small integer generators
+  * `gen/int`
+  * `gen/pos-int`
+  * `gen/neg-int`
+  * `gen/s-pos-int`
+  * `gen/s-neg-int`
+  Added a `gen/small-integer` to replace `gen/int`, and the
+  docstrings for all the deprecated generators suggest alternatives
+* Added `gen/size-bounded-bigint` and `gen/big-ratio`, both jvm-only
+* Added `*-equatable` variants of `gen/simple-type`,
+  `gen/simple-type-printable`, `gen/any`, and `gen/any-printable`;
+  the only current difference is that the new generators never generate
+  a `NaN`, and so they should always be `=` to equivalent objects
+
+## 0.10.0-alpha4 (2019-03-10)
+
+* Automatically require cljs macros so users don't have to
+  ([TCHECK-154](http://dev.clojure.org/jira/browse/TCHECK-154))
+
 ## 0.10.0-alpha3 (2018-05-27)
 
 * Improve failure reporting

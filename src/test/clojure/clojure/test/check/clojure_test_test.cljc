@@ -80,7 +80,7 @@
               :test-out out}))))))
 
 (defspec default-trial-counts
-  (prop/for-all* [gen/int] (constantly true)))
+  (prop/for-all* [gen/small-integer] (constantly true)))
 
 (deftest can-use-num-tests-default-value
   (let [{:keys [reports]} (capture-test-var #'default-trial-counts)
@@ -106,7 +106,7 @@
 
 (def trial-counts-num-tests #?(:clje 1000 :default 5000))
 (defspec trial-counts trial-counts-num-tests
-  (prop/for-all* [gen/int] (constantly true)))
+  (prop/for-all* [gen/small-integer] (constantly true)))
 
 (deftest can-specify-num-tests
   (let [{:keys [reports]} (capture-test-var #'trial-counts)
@@ -189,7 +189,7 @@
 
 (#?(:clje gen/defgen :default def) ^:private vector-elements-are-unique
   (prop/for-all*
-   [(gen/vector gen/int)]
+   [(gen/vector gen/small-integer)]
    vector-elements-are-unique*))
 
 (defspec this-is-supposed-to-fail 100 vector-elements-are-unique)
